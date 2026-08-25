@@ -3,4 +3,5 @@ dist/
 .DS_Store
 .arts/
 .codeartsdoer/
-*.log.merkle-snapshot.json
+.merkle-snapshot.json
+*.log
