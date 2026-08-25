@@ -37,6 +37,8 @@ npm start -- /path/to/file.md
 也可以在 `package.json` 中运行对应命令：`npm run pack:mac` / `pack:linux` / `pack:win`。
 
 > 说明：Windows 建议在 Windows 机器上执行打包脚本；macOS 交叉打包 Windows 需另装 wine。
+>
+> 网络受限环境（企业代理/自签证书）：脚本默认使用 npmmirror 镜像下载 Electron 及构建二进制；若仍报 `unable to verify the first certificate`，加 `--insecure` 参数跳过 TLS 校验（PowerShell 用 `-Insecure`）。
 
 ## 依赖同步
 
