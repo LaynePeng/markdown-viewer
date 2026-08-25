@@ -14,6 +14,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     title: 'Markdown Viewer',
+    icon: path.join(__dirname, 'build', 'icon.png'),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
