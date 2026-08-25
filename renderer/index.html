@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: file: https: http:">
+<title>Markdown Viewer</title>
+<link rel="stylesheet" href="vendor/github-markdown.css">
+<link rel="stylesheet" href="vendor/highlight-github.css" data-code-theme="light">
+<link rel="stylesheet" href="vendor/highlight-github-dark.css" data-code-theme="dark" disabled>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="sidebar-head">
+      <div class="sidebar-title">
+        <span class="icon"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/></svg></span>
+        <span id="dir-name">文件树</span>
+      </div>
+      <div class="sidebar-actions">
+        <button id="btn-dir" class="btn" title="打开文件夹 (⌘O)">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/></svg>
+          打开文件夹
+        </button>
+        <button id="btn-collapse" class="btn btn-icon" title="收起全部">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3.72 6.72a.75.75 0 0 1 0-1.06l3.5-3.5a.75.75 0 0 1 1.06 0l3.5 3.5a.75.75 0 0 1-1.06 1.06L8 3.81 4.78 6.72a.75.75 0 0 1-1.06 0Z"/><path d="M3.72 9.28a.75.75 0 0 1 1.06 0L8 12.19l3.22-2.91a.75.75 0 0 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 0-1.06Z"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="tree" tabindex="0"></div>
+  </aside>
+  <main id="content">
+    <div id="content-head">
+      <button id="btn-open" class="btn" title="打开 Markdown 文件">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z"/></svg>
+        打开文件
+      </button>
+      <span id="file-path" title=""></span>
+      <div class="content-actions">
+        <span id="file-title" hidden></span>
+        <button id="btn-toggle-tree" class="btn btn-icon" title="切换文件树 (⌘B)">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/><path d="M0 5.5h4"/></svg>
+        </button>
+        <button id="btn-settings" class="btn btn-icon" title="外观设置">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M8 1.5a6.5 6.5 0 1 1-6.48 7.2.75.75 0 0 1 1.47-.3A5 5 0 1 0 8 3a.75.75 0 0 1 0 1.5H4.75a.75.75 0 0 1 0-1.5h1.9A6.48 6.48 0 0 1 8 1.5Z"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="doc-container">
+      <article id="doc" class="markdown-body" hidden></article>
+      <div id="empty">
+        <div class="empty-icon">
+          <svg viewBox="0 0 16 16" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1"><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z"/></svg>
+        </div>
+        <h2>Markdown Viewer</h2>
+        <p>把 <code>.md</code> 文件拖进来，或点击上方「打开文件」。</p>
+        <p>把目录拖进来，即可在左侧浏览整个项目。</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="settings-panel" hidden>
+  <div class="settings-head">
+    <h3>外观定制</h3>
+    <button id="btn-close-settings" class="btn btn-icon" title="关闭">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 0 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 0 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
+    </button>
+  </div>
+
+  <label>主题
+    <select id="set-theme">
+      <option value="light">浅色</option>
+      <option value="dark">深色</option>
+    </select>
+  </label>
+  <label>字体大小 <input id="set-fontsize" type="range" min="12" max="22" step="1"></label>
+  <label>内容宽度 <input id="set-width" type="range" min="480" max="1200" step="20"></label>
+  <label>自定义 CSS 文件
+    <input id="set-cssfile" type="file" accept=".css">
+  </label>
+  <div id="cssfile-name" hidden></div>
+  <button id="btn-reset">恢复默认</button>
+</div>
+
+<div id="drop-overlay" hidden>松开鼠标打开文件 / 文件夹</div>
+
+<div id="diagram-modal" hidden>
+  <div class="modal-backdrop"></div>
+  <div class="modal-box">
+    <div class="modal-head">
+      <span>Mermaid 图 · 滚轮缩放 · 拖动平移</span>
+      <div class="modal-actions">
+        <button id="zoom-out" class="btn btn-icon" title="缩小">−</button>
+        <button id="zoom-in" class="btn btn-icon" title="放大">+</button>
+        <button id="zoom-fit" class="btn" title="适应窗口">适应</button>
+        <button id="btn-close-modal" class="btn btn-icon" title="关闭 (Esc)">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 0 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 0 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body"><div id="diagram-zoom"></div></div>
+  </div>
+</div>
+
+<script src="vendor/marked.umd.js"></script>
+<script src="hljs.js"></script>
+<script src="vendor/mermaid.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
