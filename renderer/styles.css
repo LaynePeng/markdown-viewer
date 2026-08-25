@@ -33,7 +33,7 @@ body[data-theme="dark"] {
 
 /* github-markdown.css 的配色变量默认跟随系统（prefers-color-scheme），
    这里强制跟随应用主题，否则系统深色 + 应用浅色时表格会黑底深字 */
-.markdown-body {
+#doc {
   color-scheme: light;
   --bgColor-default: #ffffff;
   --bgColor-muted: #f6f8fa;
@@ -58,7 +58,7 @@ body[data-theme="dark"] {
   --focus-outlineColor: #0969da;
 }
 
-body[data-theme="dark"] .markdown-body {
+body[data-theme="dark"] #doc {
   color-scheme: dark;
   --bgColor-default: #0d1117;
   --bgColor-muted: #151b23;
