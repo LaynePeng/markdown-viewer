@@ -11,6 +11,12 @@ function Invoke-Step([string]$Name, [scriptblock]$Block) {
     }
 }
 
+if (-not (Test-Path node_modules)) {
+    Invoke-Step "安装依赖 (npm install)" {
+        npm install
+    }
+}
+
 Invoke-Step "同步前端依赖" {
     node scripts/build-hljs.cjs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
