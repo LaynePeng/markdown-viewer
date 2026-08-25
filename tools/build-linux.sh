@@ -11,7 +11,7 @@ echo "==> 清理 dist"
 rm -rf dist
 
 echo "==> 打包 Linux (AppImage + deb)"
-npx electron-builder --linux AppImage,deb
+npx electron-builder --linux AppImage deb
 
 echo "==> 完成："
 ls -lh dist/*.AppImage dist/*.deb 2>/dev/null | awk '{print "    " $9 " (" $5 ")"}'

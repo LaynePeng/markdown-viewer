@@ -11,7 +11,7 @@ echo "==> 清理 dist"
 rm -rf dist
 
 echo "==> 打包 macOS (zip + dmg)"
-npx electron-builder --mac zip,dmg
+npx electron-builder --mac zip dmg
 
 echo "==> 完成："
 ls -lh dist/*.zip dist/*.dmg 2>/dev/null | awk '{print "    " $9 " (" $5 ")"}'

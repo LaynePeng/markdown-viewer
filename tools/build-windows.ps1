@@ -1,16 +1,32 @@
-# Windows 打包脚本 (PowerShell)：NSIS 安装包
+﻿# Windows 打包脚本 (PowerShell)：NSIS 安装包
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
-Write-Host "==> 同步前端依赖"
-node scripts/build-hljs.cjs
-node scripts/sync-vendor.cjs
+function Invoke-Step([string]$Name, [scriptblock]$Block) {
+    Write-Host "==> $Name"
+    & $Block
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "!! $Name 失败 (exit $LASTEXITCODE)" -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+}
 
-Write-Host "==> 清理 dist"
-if (Test-Path dist) { Remove-Item -Recurse -Force dist }
+Invoke-Step "同步前端依赖" {
+    node scripts/build-hljs.cjs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    node scripts/sync-vendor.cjs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
 
-Write-Host "==> 打包 Windows (NSIS)"
-npx electron-builder --win nsis
+Invoke-Step "清理 dist" {
+    if (Test-Path dist) { Remove-Item -Recurse -Force dist }
+}
+
+Invoke-Step "打包 Windows (NSIS)" {
+    npx electron-builder --win nsis
+}
 
 Write-Host "==> 完成："
-Get-ChildItem dist/*.exe | ForEach-Object { Write-Host ("    " + $_.Name + " (" + [math]::Round($_.Length / 1MB, 1) + " MB)") }
+Get-ChildItem dist -Filter *.exe | ForEach-Object {
+    Write-Host ("    " + $_.Name + " (" + [math]::Round($_.Length / 1MB, 1) + " MB)")
+}
