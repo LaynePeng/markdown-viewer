@@ -12,6 +12,7 @@
   --code-bg: #f6f8fa;
   --shadow: 0 1px 3px rgba(27, 31, 36, .1);
   --btn-border: #d8dee4;
+  color-scheme: light;
 }
 
 body[data-theme="dark"] {
@@ -27,6 +28,59 @@ body[data-theme="dark"] {
   --code-bg: #161b22;
   --shadow: 0 1px 3px rgba(0, 0, 0, .4);
   --btn-border: #30363d;
+  color-scheme: dark;
+}
+
+/* github-markdown.css 的配色变量默认跟随系统（prefers-color-scheme），
+   这里强制跟随应用主题，否则系统深色 + 应用浅色时表格会黑底深字 */
+.markdown-body {
+  color-scheme: light;
+  --bgColor-default: #ffffff;
+  --bgColor-muted: #f6f8fa;
+  --bgColor-neutral-muted: #818b981f;
+  --bgColor-attention-muted: #fff8c5;
+  --bgColor-danger-muted: #ffebe9;
+  --borderColor-default: #d1d9e0;
+  --borderColor-muted: #d1d9e0b3;
+  --borderColor-neutral-muted: #d1d9e0b3;
+  --borderColor-accent-emphasis: #0969da;
+  --borderColor-attention-emphasis: #9a6700;
+  --borderColor-danger-emphasis: #cf222e;
+  --borderColor-done-emphasis: #8250df;
+  --borderColor-success-emphasis: #1a7f37;
+  --fgColor-default: #1f2328;
+  --fgColor-muted: #59636e;
+  --fgColor-accent: #0969da;
+  --fgColor-attention: #9a6700;
+  --fgColor-danger: #d1242f;
+  --fgColor-done: #8250df;
+  --fgColor-success: #1a7f37;
+  --focus-outlineColor: #0969da;
+}
+
+body[data-theme="dark"] .markdown-body {
+  color-scheme: dark;
+  --bgColor-default: #0d1117;
+  --bgColor-muted: #151b23;
+  --bgColor-neutral-muted: #656c7633;
+  --bgColor-attention-muted: #bb800926;
+  --bgColor-danger-muted: #67060c;
+  --borderColor-default: #3d444d;
+  --borderColor-muted: #3d444db3;
+  --borderColor-neutral-muted: #3d444db3;
+  --borderColor-accent-emphasis: #1f6feb;
+  --borderColor-attention-emphasis: #9e6a03;
+  --borderColor-danger-emphasis: #da3633;
+  --borderColor-done-emphasis: #8957e5;
+  --borderColor-success-emphasis: #238636;
+  --fgColor-default: #f0f6fc;
+  --fgColor-muted: #9198a1;
+  --fgColor-accent: #4493f8;
+  --fgColor-attention: #d29922;
+  --fgColor-danger: #f85149;
+  --fgColor-done: #ab7df8;
+  --fgColor-success: #3fb950;
+  --focus-outlineColor: #1f6feb;
 }
 
 * { box-sizing: border-box; }
