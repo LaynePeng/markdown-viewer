@@ -27,6 +27,10 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+function isMarkdown(p) {
+  return /\.(md|markdown|mdown|mkd)$/i.test(p);
+}
+
 function renderTree(root) {
   treeEl.innerHTML = '';
   dirNameEl.textContent = basename(root);
@@ -83,6 +87,7 @@ function nodeOf(it) {
 }
 
 async function openLocal(p) {
+  if (!isMarkdown(p)) return;
   const r = await api.readFile(p);
   if (!r.ok) return showEmpty(p);
   openDocument(p, r.content);
@@ -281,6 +286,7 @@ async function chooseDoc() {
 }
 
 async function setupTreeAround(filePath) {
+  if (!isMarkdown(filePath)) return;
   const parts = filePath.split(/[\\/]/);
   const dir = parts.slice(0, -1).join('/');
   if (!dir) return;
@@ -307,8 +313,10 @@ async function handleDrop(e) {
   if (!f) return;
   const p = api.filePathFor(f);
   if (!p) return;
-  const st = await api.readFile(p);
-  if (st.ok) { setupTreeAround(p); return; }
+  if (isMarkdown(p)) {
+    const st = await api.readFile(p);
+    if (st.ok) { setupTreeAround(p); return; }
+  }
   const rd = await api.readDir(p);
   if (rd.ok) setDir(p);
 }
