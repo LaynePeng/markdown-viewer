@@ -14,8 +14,12 @@ const settingsPanel = $('#settings-panel');
 const cssFileName = $('#cssfile-name');
 const modalEl = $('#diagram-modal');
 const zoomBody = $('#diagram-zoom');
+const btnEdit = $('#btn-edit');
+const btnSave = $('#btn-save');
+const editorEl = $('#editor');
+const editorPane = $('#editor-pane');
 
-const state = { root: null, expanded: new Set(), active: null, mermaidItems: [] };
+const state = { root: null, expanded: new Set(), active: null, mermaidItems: [], dir: '', raw: '', editing: false, dirty: false };
 
 const ICONS = {
   dir: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/></svg>',
@@ -32,12 +36,14 @@ function isMarkdown(p) {
 }
 
 function renderTree(root) {
+  state.root = root;
   treeEl.innerHTML = '';
   dirNameEl.textContent = basename(root);
   dirNameEl.title = root;
   const ul = document.createElement('ul');
   treeEl.appendChild(ul);
   loadLevel(root, ul);
+  if (state.active) highlightTree(state.active);
 }
 
 async function loadLevel(dir, ul) {
@@ -93,16 +99,43 @@ async function openLocal(p) {
   openDocument(p, r.content);
 }
 
-async function openDocument(filePath, content) {
-  state.active = filePath;
-  titleEl.hidden = false;
-  titleEl.textContent = basename(filePath);
-  titleEl.title = filePath;
-  document.title = basename(filePath);
-  filePathEl.textContent = filePath;
-  filePathEl.title = filePath;
-  highlightTree(filePath);
-  docEl.innerHTML = marked.parse(content, { gfm: true, breaks: true });
+/* ---------- 相对路径图片 ---------- */
+function toFileUrl(p) {
+  let s = encodeURI(p).replace(/#/g, '%23').replace(/\?/g, '%3F');
+  if (/^[A-Za-z]:\//.test(s)) s = '/' + s;
+  return 'file://' + s;
+}
+
+function resolveAssetUrl(href) {
+  if (!href) return href;
+  if (/^(https?:|data:|file:|blob:|mailto:|#)/i.test(href)) return href;
+  let clean = href.replace(/\\/g, '/').replace(/^\.\//, '');
+  if (clean.startsWith('/') || /^[A-Za-z]:\//.test(clean)) return toFileUrl(clean);
+  const parts = [];
+  for (const s of clean.split('/')) {
+    if (!s || s === '.') continue;
+    if (s === '..') parts.pop();
+    else parts.push(s);
+  }
+  return toFileUrl(state.dir + '/' + parts.join('/'));
+}
+
+const mdRenderer = new window.marked.Renderer();
+mdRenderer.image = ({ href, title, text }) => {
+  const src = resolveAssetUrl(href);
+  const alt = text ? esc(text) : '';
+  const t = title ? ' title="' + esc(title) + '"' : '';
+  return '<img src="' + src + '" alt="' + alt + '"' + t + ' loading="lazy">';
+};
+
+function renderMarkdown(content) {
+  docEl.innerHTML = marked.parse(content, { gfm: true, breaks: true, renderer: mdRenderer });
+  docEl.querySelectorAll('img').forEach(img => {
+    const src = img.getAttribute('src');
+    if (!src) return;
+    const abs = resolveAssetUrl(src);
+    if (abs !== src) img.setAttribute('src', abs);
+  });
   collectMermaid();
   docEl.querySelectorAll('pre code').forEach(b => {
     if (window.hljs && !b.classList.contains('hljs')) window.hljs.highlightElement(b);
@@ -110,6 +143,24 @@ async function openDocument(filePath, content) {
   renderMermaid();
   docEl.hidden = false;
   emptyEl.hidden = true;
+}
+
+async function openDocument(filePath, content) {
+  state.active = filePath;
+  state.dir = filePath.replace(/[\\/][^\\/]*$/, '');
+  state.raw = content;
+  titleEl.hidden = false;
+  titleEl.textContent = basename(filePath);
+  titleEl.title = filePath;
+  document.title = basename(filePath);
+  filePathEl.textContent = filePath;
+  filePathEl.title = filePath;
+  highlightTree(filePath);
+  renderMarkdown(content);
+  editorEl.value = content;
+  state.dirty = false;
+  exitEdit();
+  api.watchFile(filePath);
   docEl.scrollTop = 0;
 }
 
@@ -256,6 +307,32 @@ modalEl.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !modalEl.hidden) closeDiagram();
+  if (e.key === 'Escape' && !aboutModal.hidden) closeAbout();
+});
+/* ---------- About 弹窗 ---------- */
+const GITHUB_URL = 'https://github.com/LaynePeng/markdown-viewer';
+const aboutModal = $('#about-modal');
+
+function closeAbout() { aboutModal.hidden = true; }
+
+api.onShowAbout(() => { aboutModal.hidden = false; });
+$('#btn-close-about').addEventListener('click', closeAbout);
+$('#btn-about-github').addEventListener('click', () => api.openExternal(GITHUB_URL));
+$('#about-github').addEventListener('click', (e) => { e.preventDefault(); api.openExternal(GITHUB_URL); });
+aboutModal.addEventListener('click', (e) => {
+  if (e.target === aboutModal || e.target.classList.contains('modal-backdrop')) closeAbout();
+});
+
+document.addEventListener('keydown', (e) => {
+  const mod = e.metaKey || e.ctrlKey;
+  if (!mod) return;
+  if (e.key === 's' || e.key === 'S') {
+    e.preventDefault();
+    saveDoc();
+  } else if (e.key === 'e' || e.key === 'E') {
+    e.preventDefault();
+    toggleEdit();
+  }
 });
 
 function basename(p) { return p.split(/[\\/]/).pop(); }
@@ -273,7 +350,101 @@ function showEmpty(title) {
   emptyEl.hidden = false;
   emptyEl.querySelector('h2').textContent = title || 'Markdown Viewer';
   document.title = 'Markdown Viewer';
+  exitEdit();
+  state.active = null;
+  api.watchFile(null);
 }
+
+/* ---------- 编辑模式 ---------- */
+let previewTimer = null;
+
+function updateEditButtons() {
+  btnEdit.disabled = !state.active;
+  const editing = state.editing;
+  btnEdit.innerHTML = (editing
+    ? '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M8 1.5a6.5 6.5 0 1 1-6.48 7.2.75.75 0 0 1 1.47-.3A5 5 0 1 0 8 3a.75.75 0 0 1 0 1.5H4.75a.75.75 0 0 1 0-1.5h1.9A6.48 6.48 0 0 1 8 1.5Z"/></svg>预览'
+    : '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474L7.293 12.27a.75.75 0 0 1-.35.204l-3.38.845a.75.75 0 0 1-.927-.927l.845-3.38a.75.75 0 0 1 .204-.35L11.013 1.427Z"/></svg>编辑');
+  btnEdit.title = editing ? '退出编辑模式' : '编辑模式（左右分屏）';
+  btnSave.disabled = !(state.active && state.editing && state.dirty);
+  btnSave.querySelector('.lbl').textContent = state.editing && state.dirty ? '保存*' : '保存';
+}
+
+function enterEdit() {
+  if (!state.active) return;
+  state.editing = true;
+  document.body.classList.add('editing');
+  editorPane.hidden = false;
+  updateEditButtons();
+  editorEl.focus();
+}
+
+function exitEdit() {
+  state.editing = false;
+  document.body.classList.remove('editing');
+  editorPane.hidden = true;
+  if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; }
+  updateEditButtons();
+}
+
+function toggleEdit() {
+  if (state.editing) exitEdit();
+  else enterEdit();
+}
+
+let suppressUntil = 0;
+
+async function saveDoc() {
+  if (!state.active || !state.editing || !state.dirty) return;
+  const r = await api.writeFile(state.active, editorEl.value);
+  if (!r.ok) {
+    alert(r.error || '保存失败');
+    return;
+  }
+  suppressUntil = Date.now() + 500;
+  state.raw = editorEl.value;
+  state.dirty = false;
+  updateEditButtons();
+  renderMarkdown(state.raw);
+}
+
+function onEditorInput() {
+  state.dirty = true;
+  updateEditButtons();
+  if (previewTimer) clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => renderMarkdown(editorEl.value), 200);
+}
+
+/* ---------- 自动刷新 ---------- */
+let fileRefreshTimer = null;
+let treeRefreshTimer = null;
+
+api.onFileChanged(p => {
+  if (!state.active || p !== state.active) return;
+  if (fileRefreshTimer) clearTimeout(fileRefreshTimer);
+  fileRefreshTimer = setTimeout(async () => {
+    if (Date.now() < suppressUntil) return;
+    if (state.editing && state.dirty) {
+      renderMarkdown(editorEl.value);
+      return;
+    }
+    const st = docEl.scrollTop;
+    const r = await api.readFile(state.active);
+    if (!r.ok) return showEmpty(state.active);
+    state.raw = r.content;
+    editorEl.value = r.content;
+    state.dirty = false;
+    updateEditButtons();
+    renderMarkdown(r.content);
+    docEl.scrollTop = st;
+  }, 150);
+});
+
+api.onTreeChanged(dir => {
+  if (!state.root) return;
+  if (dir !== state.root && !dir.startsWith(state.root + '/')) return;
+  if (treeRefreshTimer) clearTimeout(treeRefreshTimer);
+  treeRefreshTimer = setTimeout(() => renderTree(state.root), 200);
+});
 
 async function chooseDir() {
   const r = await api.chooseDir();
@@ -301,8 +472,8 @@ async function setupTreeAround(filePath) {
 }
 
 function setDir(dir) {
-  renderTree(dir);
   state.active = null;
+  renderTree(dir);
   showEmpty();
 }
 
@@ -361,6 +532,9 @@ const cssFileNameEl = $('#cssfile-name');
 /* ---------- 事件绑定 ---------- */
 $('#btn-open').addEventListener('click', chooseDoc);
 $('#btn-dir').addEventListener('click', chooseDir);
+btnEdit.addEventListener('click', toggleEdit);
+btnSave.addEventListener('click', saveDoc);
+editorEl.addEventListener('input', onEditorInput);
 $('#btn-collapse').addEventListener('click', () => {
   treeEl.querySelectorAll('li.open').forEach(li => li.classList.remove('open'));
   state.expanded.clear();
