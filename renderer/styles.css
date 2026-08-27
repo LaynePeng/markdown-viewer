@@ -259,18 +259,33 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 }
 
 #editor-pane {
-  flex: 1 1 48%;
-  min-width: 0;
+  flex: 0 0 var(--editor-w, 45%);
+  min-width: 120px;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--sidebar-border);
   background: var(--bg);
 }
 
 #editor-pane[hidden] { display: none; }
 
+#divider {
+  display: none;
+  flex: 0 0 5px;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+  transition: background .12s ease;
+}
+
+#content.editing #divider { display: block; }
+#divider:hover, #divider.dragging { background: var(--accent); }
+
+body.resizing, body.resizing * { user-select: none; cursor: col-resize; }
+
 #editor {
   flex: 1;
+  min-height: 0;
+  width: 100%;
   resize: none;
   border: none;
   outline: none;
@@ -286,7 +301,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 #content.editing #doc {
   max-width: none;
-  flex: 1 1 52%;
+  flex: 1 1 auto;
   overflow: auto;
   align-self: stretch;
 }

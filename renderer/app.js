@@ -373,6 +373,7 @@ function enterEdit() {
   if (!state.active) return;
   state.editing = true;
   document.body.classList.add('editing');
+  $('#content').classList.add('editing');
   editorPane.hidden = false;
   updateEditButtons();
   editorEl.focus();
@@ -381,6 +382,7 @@ function enterEdit() {
 function exitEdit() {
   state.editing = false;
   document.body.classList.remove('editing');
+  $('#content').classList.remove('editing');
   editorPane.hidden = true;
   if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; }
   updateEditButtons();
@@ -390,6 +392,40 @@ function toggleEdit() {
   if (state.editing) exitEdit();
   else enterEdit();
 }
+
+/* ---------- 分屏分割线拖动 ---------- */
+const dividerEl = $('#divider');
+let dividerDragging = false;
+
+function applyEditorWidth(pct) {
+  $('#content').style.setProperty('--editor-w', pct + '%');
+}
+
+function setEditorWidth(pct) {
+  const v = Math.min(80, Math.max(15, pct));
+  applyEditorWidth(v);
+  cfg.editorW = Math.round(v);
+  saveCfg();
+}
+
+dividerEl.addEventListener('pointerdown', (e) => {
+  dividerDragging = true;
+  dividerEl.classList.add('dragging');
+  document.body.classList.add('resizing');
+  try { dividerEl.setPointerCapture(e.pointerId); } catch { /* noop */ }
+  e.preventDefault();
+});
+dividerEl.addEventListener('pointermove', (e) => {
+  if (!dividerDragging) return;
+  const dc = $('#doc-container').getBoundingClientRect();
+  if (dc.width <= 0) return;
+  setEditorWidth(((e.clientX - dc.left) / dc.width) * 100);
+});
+['pointerup', 'pointercancel'].forEach(ev => dividerEl.addEventListener(ev, () => {
+  dividerDragging = false;
+  dividerEl.classList.remove('dragging');
+  document.body.classList.remove('resizing');
+}));
 
 let suppressUntil = 0;
 
@@ -496,7 +532,7 @@ function showOverlay() { dropOverlay.hidden = false; }
 function hideOverlay() { dropOverlay.hidden = true; }
 
 /* ---------- 外观定制 ---------- */
-const defaultCfg = { theme: 'light', fontsize: 16, width: 800 };
+const defaultCfg = { theme: 'light', fontsize: 16, width: 800, editorW: 45 };
 
 function loadCfg() {
   try { return { ...defaultCfg, ...JSON.parse(localStorage.getItem('mdv-cfg') || '{}') }; }
@@ -511,6 +547,7 @@ function applyCfg() {
   document.body.dataset.theme = cfg.theme;
   document.documentElement.style.setProperty('--fontsize', cfg.fontsize + 'px');
   docEl.style.maxWidth = cfg.width + 'px';
+  applyEditorWidth(cfg.editorW || 45);
   $('#set-theme').value = cfg.theme;
   $('#set-fontsize').value = cfg.fontsize;
   $('#set-width').value = cfg.width;
