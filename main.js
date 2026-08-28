@@ -60,11 +60,28 @@ app.on('open-file', (e, filePath) => {
 const arg = process.argv.find(a => /\.(md|markdown|mdown|mkd)$/i.test(a) && !a.startsWith('-'));
 if (arg) pendingFile = path.resolve(arg);
 
-app.whenReady().then(() => {
-  setupMenu();
-  createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-});
+/* 单实例锁：Windows 上应用已运行时再双击 .md 关联文件，
+   复用现有窗口定位文件，而不是启动第二个实例 */
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_e, argv) => {
+    const f = argv.find(a => /\.(md|markdown|mdown|mkd)$/i.test(a) && !a.startsWith('-'));
+    if (f) {
+      if (mainWindow && windowReady) sendOpen(path.resolve(f));
+      else pendingFile = path.resolve(f);
+    } else if (mainWindow) {
+      mainWindow.focus();
+    }
+  });
+
+  app.whenReady().then(() => {
+    setupMenu();
+    createWindow();
+    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  });
+}
 
 /* ---------- About 菜单 ---------- */
 function showAbout() {

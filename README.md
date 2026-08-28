@@ -36,9 +36,22 @@ npm start -- /path/to/file.md
 
 也可以在 `package.json` 中运行对应命令：`npm run pack:mac` / `pack:linux` / `pack:win`。
 
+macOS 脚本支持指定架构：`./tools/build-macos.sh --arm64`（Apple Silicon）/ `--x64`（Intel）/ `--universal`（双架构），不传默认当前机器架构。
+
 > 说明：Windows 建议在 Windows 机器上执行打包脚本；macOS 交叉打包 Windows 需另装 wine。
 >
 > 网络受限环境（企业代理/自签证书）：脚本默认使用 npmmirror 镜像下载 Electron 及构建二进制；若仍报 `unable to verify the first certificate`，加 `--insecure` 参数跳过 TLS 校验（PowerShell 用 `-Insecure`）。
+
+### GitHub Actions 构建（推荐）
+
+仓库已配置 `.github/workflows/build-installers.yml`，无需本地环境即可产出 Windows NSIS 安装包与 macOS arm64 包：
+
+1. 推送到 GitHub 后打开 **Actions** 页 → **Build Installers** → **Run workflow**（手动触发）
+2. 构建完成后在运行详情页底部 **Artifacts** 下载：
+   - `markdown-viewer-windows` — Windows 安装包 (.exe)
+   - `markdown-viewer-macos-arm64` — macOS zip + dmg（Apple Silicon）
+
+打 `v*` 标签（如 `v1.0.0`）推送时会自动触发构建。
 
 ## 依赖同步
 

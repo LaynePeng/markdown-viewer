@@ -1,0 +1,46 @@
+name: Build Installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  windows:
+    name: Windows (NSIS)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run pack:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: markdown-viewer-windows
+          path: dist/*.exe
+          if-no-files-found: error
+
+  macos:
+    name: macOS (arm64)
+    runs-on: macos-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: bash tools/build-macos.sh --arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: markdown-viewer-macos-arm64
+          path: |
+            dist/*.zip
+            dist/*.dmg
+          if-no-files-found: error
