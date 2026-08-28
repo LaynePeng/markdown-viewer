@@ -58,7 +58,12 @@ jobs:
         with:
           path: release-assets
           merge-multiple: true
+      - name: 生成 Release Notes（版本号取自 tag）
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed "s/{{VERSION}}/${VER}/g" RELEASE_NOTES.md > release-notes.md
       - uses: softprops/action-gh-release@v2
         with:
           files: release-assets/**
-          body_path: RELEASE_NOTES.md
+          body_path: release-notes.md
