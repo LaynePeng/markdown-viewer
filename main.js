@@ -155,11 +155,19 @@ const MD_EXT = new Set(['.md', '.markdown', '.mdown', '.mkd']);
 ipcMain.handle('read-dir', async (_e, dirPath) => {
   const entries = await fs.promises.readdir(dirPath, { withFileTypes: true }).catch(() => null);
   if (!entries) return { ok: false };
-  const items = entries
-    .filter(d => !d.name.startsWith('.'))
-    .filter(d => d.isDirectory() || MD_EXT.has(path.extname(d.name).toLowerCase()))
-    .map(d => ({ name: d.name, path: path.join(dirPath, d.name), isDir: d.isDirectory(), ext: path.extname(d.name).toLowerCase() }))
-    .sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name, 'zh'));
+  const items = [];
+  for (const d of entries) {
+    if (d.name.startsWith('.')) continue;
+    if (!d.isDirectory() && !MD_EXT.has(path.extname(d.name).toLowerCase())) continue;
+    const fullPath = path.join(dirPath, d.name);
+    let mtime = 0;
+    try {
+      const st = await fs.promises.stat(fullPath);
+      mtime = st.mtimeMs;
+    } catch { /* noop */ }
+    items.push({ name: d.name, path: fullPath, isDir: d.isDirectory(), ext: path.extname(d.name).toLowerCase(), mtime });
+  }
+  items.sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name, 'zh'));
   return { ok: true, items };
 });
 

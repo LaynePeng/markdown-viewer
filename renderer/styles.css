@@ -135,6 +135,24 @@ body.tree-hidden #sidebar { margin-left: -280px; }
 
 .sidebar-actions { display: flex; gap: 6px; }
 
+.sort-row { display: flex; gap: 4px; }
+.sort-row .btn-icon { padding: 4px 6px; font-size: 14px; line-height: 1; }
+
+#sort-select {
+  flex: 1;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 8px;
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  outline: none;
+}
+#sort-select:hover { border-color: var(--accent); }
+#sort-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 #tree { flex: 1; overflow: auto; padding: 6px 6px; }
 
 #tree ul { list-style: none; margin: 0; padding: 0 0 0 14px; }
@@ -237,6 +255,90 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .btn svg { flex-shrink: 0; }
 
 /* ---------- 文档区 ---------- */
+#tab-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--sidebar-border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+#tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 10px 0;
+  min-height: 38px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  padding: 6px 8px 6px 11px;
+  font-size: 12.5px;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  position: relative;
+}
+
+.tab .tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab .tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  border-radius: 50%;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: .6;
+}
+.tab .tab-close:hover { background: var(--hover); color: var(--fg); opacity: 1; }
+
+.tab:hover { background: var(--hover); color: var(--fg); }
+
+.tab.active {
+  background: var(--bg);
+  border-color: var(--sidebar-border);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+}
+
+.tab .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
 #doc-container {
   flex: 1;
   overflow: auto;

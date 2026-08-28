@@ -24,8 +24,14 @@ const findCount = $('#find-count');
 const findPrevBtn = $('#find-prev');
 const findNextBtn = $('#find-next');
 const findCloseBtn = $('#find-close');
+const tabsEl = $('#tabs');
+const sortSelect = $('#sort-select');
+const sortDirBtn = $('#sort-dir');
 
-const state = { root: null, expanded: new Set(), active: null, mermaidItems: [], dir: '', raw: '', editing: false, dirty: false };
+const state = { root: null, expanded: new Set(), active: null, mermaidItems: [], dir: '', sortBy: 'name', sortDir: 'asc' };
+const tabs = [];
+let activeTabId = null;
+let tabSeq = 0;
 
 const ICONS = {
   dir: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/></svg>',
@@ -39,6 +45,26 @@ function esc(s) {
 
 function isMarkdown(p) {
   return /\.(md|markdown|mdown|mkd)$/i.test(p);
+}
+
+function sortItems(items) {
+  return items.slice().sort((a, b) => {
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+    let cmp;
+    if (state.sortBy === 'mtime') cmp = (a.mtime || 0) - (b.mtime || 0);
+    else cmp = a.name.localeCompare(b.name, 'zh');
+    return state.sortDir === 'desc' ? -cmp : cmp;
+  });
+}
+
+function naturalSortDir() {
+  return state.sortBy === 'mtime' ? 'desc' : 'asc';
+}
+
+function updateSortUI() {
+  sortSelect.value = state.sortBy;
+  sortDirBtn.textContent = state.sortDir === 'desc' ? '↓' : '↑';
+  sortDirBtn.title = state.sortDir === 'desc' ? '当前：倒序，点击切换正序' : '当前：正序，点击切换倒序';
 }
 
 function renderTree(root) {
@@ -56,7 +82,7 @@ async function loadLevel(dir, ul) {
   ul.dataset.loading = '1';
   const r = await api.readDir(dir);
   if (!r.ok) return;
-  for (const it of r.items) {
+  for (const it of sortItems(r.items)) {
     ul.appendChild(nodeOf(it));
   }
 }
@@ -64,6 +90,7 @@ async function loadLevel(dir, ul) {
 function nodeOf(it) {
   const li = document.createElement('li');
   li.dataset.isDir = it.isDir ? '1' : '';
+  li.dataset.path = it.path;
   if (it.isDir) {
     const span = document.createElement('span');
     span.className = 'dir';
@@ -88,21 +115,51 @@ function nodeOf(it) {
     span.className = 'file';
     span.innerHTML = ICONS.file + '<span class="nm">' + esc(it.name) + '</span>';
     li.appendChild(span);
-    li.addEventListener('click', () => {
-      treeEl.querySelectorAll('li.active').forEach(l => l.classList.remove('active'));
-      li.classList.add('active');
-      openLocal(it.path);
+    let clickTimer = null;
+    li.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (clickTimer) {
+        clearTimeout(clickTimer);
+        clickTimer = null;
+        openLocal(it.path, true);
+        return;
+      }
+      clickTimer = setTimeout(() => {
+        clickTimer = null;
+        openLocal(it.path, false);
+      }, 220);
     });
   }
   if (state.expanded.has(it.path)) li.classList.add('open');
   return li;
 }
 
-async function openLocal(p) {
+async function openLocal(p, newTab) {
   if (!isMarkdown(p)) return;
   const r = await api.readFile(p);
   if (!r.ok) return showEmpty(p);
-  openDocument(p, r.content);
+  if (newTab) {
+    addTab(p, r.content);
+  } else {
+    const existing = tabs.find(t => t.filePath === p);
+    if (existing) {
+      switchTab(existing.id);
+    } else if (tabs.length > 0) {
+      const tab = getActiveTab();
+      if (tab) {
+        tab.filePath = p;
+        tab.raw = r.content;
+        tab.editorContent = r.content;
+        tab.dirty = false;
+        tab.editing = false;
+        tab.scrollTop = 0;
+        tab.editorScrollTop = 0;
+        switchTab(tab.id);
+      }
+    } else {
+      addTab(p, r.content);
+    }
+  }
 }
 
 /* ---------- 相对路径图片 ---------- */
@@ -152,23 +209,120 @@ function renderMarkdown(content) {
   if (!findBar.hidden && findInput.value) doFind(false);
 }
 
-async function openDocument(filePath, content) {
+/* ---------- Tab 管理 ---------- */
+function getActiveTab() {
+  return tabs.find(t => t.id === activeTabId) || null;
+}
+
+function saveTabState(tab) {
+  if (!tab) return;
+  tab.scrollTop = docEl.scrollTop;
+  tab.editorScrollTop = editorEl.scrollTop;
+  tab.editorContent = editorEl.value;
+}
+
+function renderTabBar() {
+  tabsEl.innerHTML = '';
+  for (const tab of tabs) {
+    const el = document.createElement('div');
+    el.className = 'tab' + (tab.id === activeTabId ? ' active' : '');
+    el.innerHTML = '<span class="tab-name">' + esc(basename(tab.filePath)) + '</span>'
+      + (tab.dirty ? '<span class="dot"></span>' : '')
+      + '<button class="tab-close" title="关闭">✕</button>';
+    el.querySelector('.tab-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeTab(tab.id);
+    });
+    el.addEventListener('click', () => switchTab(tab.id));
+    el.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      closeTab(tab.id);
+    });
+    tabsEl.appendChild(el);
+  }
+}
+
+function addTab(filePath, content) {
+  const id = 'tab_' + (++tabSeq);
+  const tab = { id, filePath, raw: content, editorContent: content, editing: false, dirty: false, scrollTop: 0, editorScrollTop: 0 };
+  tabs.push(tab);
   state.active = filePath;
-  state.dir = filePath.replace(/[\\/][^\\/]*$/, '');
-  state.raw = content;
+  switchTab(id);
+  return id;
+}
+
+function closeTab(tabId) {
+  const idx = tabs.findIndex(t => t.id === tabId);
+  if (idx === -1) return;
+  if (tabs.length === 1) {
+    tabs.length = 0;
+    activeTabId = null;
+    state.active = null;
+    showEmpty();
+    renderTabBar();
+    return;
+  }
+  tabs.splice(idx, 1);
+  if (tabId === activeTabId) {
+    const next = tabs[Math.min(idx, tabs.length - 1)];
+    switchTab(next.id);
+  }
+  renderTabBar();
+}
+
+function switchTab(tabId) {
+  const prev = getActiveTab();
+  if (prev) {
+    prev.scrollTop = docEl.scrollTop;
+    prev.editorScrollTop = editorEl.scrollTop;
+    prev.editorContent = editorEl.value;
+  }
+  activeTabId = tabId;
+  const tab = getActiveTab();
+  if (!tab) return;
+  state.active = tab.filePath;
+  state.dir = tab.filePath.replace(/[\\/][^\\/]*$/, '');
+  state.raw = tab.raw;
+  const nm = basename(tab.filePath);
   titleEl.hidden = false;
-  titleEl.textContent = basename(filePath);
-  titleEl.title = filePath;
-  document.title = basename(filePath);
-  filePathEl.textContent = filePath;
-  filePathEl.title = filePath;
-  highlightTree(filePath);
-  renderMarkdown(content);
-  editorEl.value = content;
-  state.dirty = false;
-  exitEdit();
-  api.watchFile(filePath);
-  docEl.scrollTop = 0;
+  titleEl.textContent = nm;
+  titleEl.title = tab.filePath;
+  document.title = nm;
+  filePathEl.textContent = tab.filePath;
+  filePathEl.title = tab.filePath;
+  highlightTree(tab.filePath);
+  const previewContent = tab.editing && tab.editorContent != null ? tab.editorContent : tab.raw;
+  renderMarkdown(previewContent);
+  editorEl.value = tab.editorContent != null ? tab.editorContent : tab.raw;
+  if (tab.editing) {
+    state.editing = true;
+    document.body.classList.add('editing');
+    $('#content').classList.add('editing');
+    editorPane.hidden = false;
+  } else {
+    state.editing = false;
+    document.body.classList.remove('editing');
+    $('#content').classList.remove('editing');
+    editorPane.hidden = true;
+  }
+  state.dirty = tab.dirty;
+  state.editing = tab.editing;
+  updateEditButtons();
+  docEl.hidden = false;
+  emptyEl.hidden = true;
+  docEl.scrollTop = tab.scrollTop || 0;
+  editorEl.scrollTop = tab.editorScrollTop || 0;
+  api.watchFile(tab.filePath);
+  renderTabBar();
+}
+
+function openDocument(filePath, content) {
+  const existing = tabs.find(t => t.filePath === filePath);
+  if (existing) {
+    switchTab(existing.id);
+    return;
+  }
+  addTab(filePath, content);
 }
 
 /* ---------- 文档内查找 ---------- */
@@ -466,10 +620,10 @@ document.addEventListener('keydown', (e) => {
 function basename(p) { return p.split(/[\\/]/).pop(); }
 
 function highlightTree(filePath) {
-  const nm = basename(filePath);
   treeEl.querySelectorAll('li.active').forEach(l => l.classList.remove('active'));
-  treeEl.querySelectorAll('li .file .nm').forEach(s => {
-    if (s.textContent === nm) s.closest('li').classList.add('active');
+  if (!filePath) return;
+  treeEl.querySelectorAll('li[data-path]').forEach(li => {
+    if (li.dataset.path === filePath) li.classList.add('active');
   });
 }
 
@@ -478,9 +632,13 @@ function showEmpty(title) {
   emptyEl.hidden = false;
   emptyEl.querySelector('h2').textContent = title || 'Markdown Viewer';
   document.title = 'Markdown Viewer';
-  exitEdit();
   state.active = null;
+  titleEl.hidden = true;
+  filePathEl.textContent = '';
   api.watchFile(null);
+  exitEdit();
+  treeEl.querySelectorAll('li.active').forEach(l => l.classList.remove('active'));
+  renderTabBar();
 }
 
 /* ---------- 编辑模式 ---------- */
@@ -500,6 +658,8 @@ function updateEditButtons() {
 function enterEdit() {
   if (!state.active) return;
   state.editing = true;
+  const tab = getActiveTab();
+  if (tab) tab.editing = true;
   document.body.classList.add('editing');
   $('#content').classList.add('editing');
   editorPane.hidden = false;
@@ -509,11 +669,14 @@ function enterEdit() {
 
 function exitEdit() {
   state.editing = false;
+  const tab = getActiveTab();
+  if (tab) tab.editing = false;
   document.body.classList.remove('editing');
   $('#content').classList.remove('editing');
   editorPane.hidden = true;
   if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; }
   updateEditButtons();
+  renderTabBar();
 }
 
 function toggleEdit() {
@@ -565,15 +728,25 @@ async function saveDoc() {
     return;
   }
   suppressUntil = Date.now() + 500;
+  const tab = getActiveTab();
+  if (tab) {
+    tab.raw = editorEl.value;
+    tab.editorContent = editorEl.value;
+    tab.dirty = false;
+  }
   state.raw = editorEl.value;
   state.dirty = false;
   updateEditButtons();
+  renderTabBar();
   renderMarkdown(state.raw);
 }
 
 function onEditorInput() {
   state.dirty = true;
+  const tab = getActiveTab();
+  if (tab) { tab.dirty = true; tab.editorContent = editorEl.value; }
   updateEditButtons();
+  renderTabBar();
   if (previewTimer) clearTimeout(previewTimer);
   previewTimer = setTimeout(() => renderMarkdown(editorEl.value), 200);
 }
@@ -587,17 +760,24 @@ api.onFileChanged(p => {
   if (fileRefreshTimer) clearTimeout(fileRefreshTimer);
   fileRefreshTimer = setTimeout(async () => {
     if (Date.now() < suppressUntil) return;
-    if (state.editing && state.dirty) {
+    const tab = getActiveTab();
+    if (tab && tab.editing && tab.dirty) {
       renderMarkdown(editorEl.value);
       return;
     }
     const st = docEl.scrollTop;
     const r = await api.readFile(state.active);
     if (!r.ok) return showEmpty(state.active);
+    if (tab) {
+      tab.raw = r.content;
+      tab.editorContent = r.content;
+      tab.dirty = false;
+    }
     state.raw = r.content;
     editorEl.value = r.content;
     state.dirty = false;
     updateEditButtons();
+    renderTabBar();
     renderMarkdown(r.content);
     docEl.scrollTop = st;
   }, 150);
@@ -625,10 +805,12 @@ async function setupTreeAround(filePath) {
   const parts = filePath.split(/[\\/]/);
   const dir = parts.slice(0, -1).join('/');
   if (!dir) return;
-  const r = await api.readDir(dir);
-  if (r.ok) {
-    renderTree(dir);
-    state.expanded.add(dir);
+  if (!state.root) {
+    const r = await api.readDir(dir);
+    if (r.ok) {
+      renderTree(dir);
+      state.expanded.add(dir);
+    }
   }
   const fr = await api.readFile(filePath);
   if (fr.ok) openDocument(filePath, fr.content);
@@ -636,9 +818,11 @@ async function setupTreeAround(filePath) {
 }
 
 function setDir(dir) {
-  state.active = null;
   renderTree(dir);
-  showEmpty();
+  if (tabs.length === 0) {
+    state.active = null;
+    showEmpty();
+  }
 }
 
 async function handleDrop(e) {
@@ -660,7 +844,7 @@ function showOverlay() { dropOverlay.hidden = false; }
 function hideOverlay() { dropOverlay.hidden = true; }
 
 /* ---------- 外观定制 ---------- */
-const defaultCfg = { theme: 'light', fontsize: 16, width: 800, editorW: 45 };
+const defaultCfg = { theme: 'light', fontsize: 16, width: 800, editorW: 45, sortBy: 'name', sortDir: 'asc' };
 
 function loadCfg() {
   try { return { ...defaultCfg, ...JSON.parse(localStorage.getItem('mdv-cfg') || '{}') }; }
@@ -679,6 +863,9 @@ function applyCfg() {
   $('#set-theme').value = cfg.theme;
   $('#set-fontsize').value = cfg.fontsize;
   $('#set-width').value = cfg.width;
+  state.sortBy = cfg.sortBy || 'name';
+  state.sortDir = cfg.sortDir != null ? cfg.sortDir : naturalSortDir();
+  updateSortUI();
   document.querySelectorAll('link[data-code-theme]').forEach(l => {
     l.disabled = l.dataset.codeTheme !== cfg.theme;
   });
@@ -711,6 +898,7 @@ $('#btn-reset').addEventListener('click', () => {
   cfg = { ...defaultCfg };
   saveCfg(); applyCfg(); applyCustomCss('');
   cssFileNameEl.hidden = true;
+  if (state.root) renderTree(state.root);
   renderMermaid();
 });
 settingsPanel.addEventListener('change', (e) => {
@@ -731,6 +919,22 @@ cssFileInput.addEventListener('change', async () => {
     initCustomCss(r.content);
     cssFileNameEl.textContent = f.name;
   }
+});
+sortSelect.addEventListener('change', () => {
+  state.sortBy = sortSelect.value;
+  cfg.sortBy = state.sortBy;
+  state.sortDir = naturalSortDir();
+  cfg.sortDir = state.sortDir;
+  saveCfg();
+  updateSortUI();
+  if (state.root) renderTree(state.root);
+});
+sortDirBtn.addEventListener('click', () => {
+  state.sortDir = state.sortDir === 'desc' ? 'asc' : 'desc';
+  cfg.sortDir = state.sortDir;
+  saveCfg();
+  updateSortUI();
+  if (state.root) renderTree(state.root);
 });
 
 /* ---------- 打开事件（主进程/双击/命令行/已运行） ---------- */
