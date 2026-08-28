@@ -1,6 +1,8 @@
 const { app, BrowserWindow, dialog, ipcMain, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
+const os = require('os');
 
 const GITHUB_URL = 'https://github.com/LaynePeng/markdown-viewer';
 
@@ -244,4 +246,87 @@ ipcMain.handle('watch-file', (_e, filePath) => {
     startWatching(filePath);
   }
   return { ok: true };
+});
+
+/* ---------- 关联 Markdown 文件（设为默认打开方式） ---------- */
+const ASSOCIATE_EXTS = ['.md', '.markdown', '.mdown', '.mkd'];
+
+const ASSOCIATE_SWIFT = `
+import CoreServices
+import UniformTypeIdentifiers
+
+let args = CommandLine.arguments
+guard args.count >= 3 else { exit(2) }
+let bundleId = args[1]
+for ext in args.dropFirst(2) {
+  guard let type = UTType(filenameExtension: ext) else { continue }
+  let err = LSSetDefaultRoleHandlerForContentType(type.identifier as CFString, .viewer, bundleId as CFString)
+  if err != 0 { exit(err) }
+}
+`;
+
+function runExec(cmd, args) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, (err, _so, se) => (err ? reject(new Error((se || err.message || '').trim())) : resolve()));
+  });
+}
+
+async function associateWindows() {
+  const exe = process.execPath;
+  const progId = 'MarkdownViewer.md';
+  await runExec('reg', ['add', `HKCU\\Software\\Classes\\${progId}`, '/ve', '/d', 'Markdown 文档', '/f']);
+  await runExec('reg', ['add', `HKCU\\Software\\Classes\\${progId}\\DefaultIcon`, '/ve', '/d', `"${exe}",0`, '/f']);
+  await runExec('reg', ['add', `HKCU\\Software\\Classes\\${progId}\\shell\\open\\command`, '/ve', '/d', `"${exe}" "%1"`, '/f']);
+  for (const ext of ASSOCIATE_EXTS) {
+    await runExec('reg', ['add', `HKCU\\Software\\Classes\\${ext}`, '/ve', '/d', progId, '/f']);
+  }
+  return { ok: true, message: `已将 ${ASSOCIATE_EXTS.join(' / ')} 的默认打开方式设为 Markdown Viewer` };
+}
+
+async function associateMacOS() {
+  const infoPlist = path.join(process.execPath, '..', '..', 'Info.plist');
+  const plist = await fs.promises.readFile(infoPlist, 'utf8');
+  const m = plist.match(/<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/);
+  if (!m) return { ok: false, message: '无法读取应用标识（CFBundleIdentifier）' };
+  const dir = path.join(app.getPath('userData'), 'associate');
+  await fs.promises.mkdir(dir, { recursive: true });
+  const swiftPath = path.join(dir, 'associate.swift');
+  const binPath = path.join(dir, 'associate');
+  await fs.promises.writeFile(swiftPath, ASSOCIATE_SWIFT, 'utf8');
+  await runExec('swiftc', [swiftPath, '-o', binPath]);
+  await runExec(binPath, [m[1], ...ASSOCIATE_EXTS.map(e => e.slice(1))]);
+  return { ok: true, message: '已将 .md 等 Markdown 文件的默认打开方式设为 Markdown Viewer' };
+}
+
+async function associateLinux() {
+  const exe = process.execPath;
+  const desktop = 'markdown-viewer.desktop';
+  const appsDir = path.join(os.homedir(), '.local', 'share', 'applications');
+  await fs.promises.mkdir(appsDir, { recursive: true });
+  const desktopPath = path.join(appsDir, desktop);
+  await fs.promises.writeFile(desktopPath,
+    `[Desktop Entry]\nType=Application\nName=Markdown Viewer\nExec="${exe}" %U\nMimeType=text/markdown;\n`, 'utf8');
+  for (const ext of ASSOCIATE_EXTS) {
+    const so = await new Promise((resolve, reject) => {
+      execFile('xdg-mime', ['query', 'filetype', `dummy${ext}`], (err, out, se) => (err ? reject(new Error((se || err.message || '').trim())) : resolve(out.trim())));
+    });
+    if (so && so !== 'application/octet-stream') {
+      await runExec('xdg-mime', ['default', desktop, so]);
+    }
+  }
+  return { ok: true, message: '已将 .md 等 Markdown 文件的默认打开方式设为 Markdown Viewer' };
+}
+
+ipcMain.handle('associate-files', async () => {
+  if (!app.isPackaged) {
+    return { ok: false, message: '开发模式无法关联，请在打包后的应用中使用此功能' };
+  }
+  try {
+    if (process.platform === 'win32') return await associateWindows();
+    if (process.platform === 'darwin') return await associateMacOS();
+    if (process.platform === 'linux') return await associateLinux();
+    return { ok: false, message: `当前平台（${process.platform}）暂不支持自动关联，请在系统设置中手动设置` };
+  } catch (err) {
+    return { ok: false, message: '关联失败：' + (err.message || String(err)) + '（也可在系统设置的默认应用中手动设置）' };
+  }
 });

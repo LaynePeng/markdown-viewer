@@ -594,7 +594,20 @@ body[data-theme="dark"] #doc.markdown-body pre {
 
 .about-body a:hover { text-decoration: underline; }
 
-.about-body .btn { margin-top: 8px; }
+.about-body .about-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.about-body .associate-status {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fgColor-danger);
+}
+
+.about-body .associate-status.ok { color: var(--fgColor-success); }
 
 /* ---------- 滚动条 ---------- */
 ::-webkit-scrollbar { width: 10px; height: 10px; }

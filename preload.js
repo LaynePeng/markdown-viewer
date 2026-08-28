@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('mdv', {
   writeFile: (f, c) => ipcRenderer.invoke('write-file', f, c),
   watchFile: (f) => ipcRenderer.invoke('watch-file', f),
   openExternal: (u) => ipcRenderer.invoke('open-external', u),
+  associateFiles: () => ipcRenderer.invoke('associate-files'),
   filePathFor: (f) => webUtils.getPathForFile(f),
   onOpenFile: (cb) => {
     const h = (_e, p) => cb(p);

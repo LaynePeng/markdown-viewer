@@ -319,6 +319,21 @@ api.onShowAbout(() => { aboutModal.hidden = false; });
 $('#btn-close-about').addEventListener('click', closeAbout);
 $('#btn-about-github').addEventListener('click', () => api.openExternal(GITHUB_URL));
 $('#about-github').addEventListener('click', (e) => { e.preventDefault(); api.openExternal(GITHUB_URL); });
+const btnAssociate = $('#btn-associate-files');
+const associateStatus = $('#associate-status');
+btnAssociate.addEventListener('click', async () => {
+  if (btnAssociate.disabled) return;
+  btnAssociate.disabled = true;
+  const idleText = btnAssociate.textContent;
+  btnAssociate.textContent = '正在关联…';
+  associateStatus.hidden = true;
+  const r = await api.associateFiles();
+  btnAssociate.textContent = idleText;
+  btnAssociate.disabled = false;
+  associateStatus.textContent = r.message;
+  associateStatus.classList.toggle('ok', !!r.ok);
+  associateStatus.hidden = false;
+});
 aboutModal.addEventListener('click', (e) => {
   if (e.target === aboutModal || e.target.classList.contains('modal-backdrop')) closeAbout();
 });
