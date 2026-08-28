@@ -18,6 +18,12 @@ const btnEdit = $('#btn-edit');
 const btnSave = $('#btn-save');
 const editorEl = $('#editor');
 const editorPane = $('#editor-pane');
+const findBar = $('#find-bar');
+const findInput = $('#find-input');
+const findCount = $('#find-count');
+const findPrevBtn = $('#find-prev');
+const findNextBtn = $('#find-next');
+const findCloseBtn = $('#find-close');
 
 const state = { root: null, expanded: new Set(), active: null, mermaidItems: [], dir: '', raw: '', editing: false, dirty: false };
 
@@ -143,6 +149,7 @@ function renderMarkdown(content) {
   renderMermaid();
   docEl.hidden = false;
   emptyEl.hidden = true;
+  if (!findBar.hidden && findInput.value) doFind(false);
 }
 
 async function openDocument(filePath, content) {
@@ -163,6 +170,108 @@ async function openDocument(filePath, content) {
   api.watchFile(filePath);
   docEl.scrollTop = 0;
 }
+
+/* ---------- 文档内查找 ---------- */
+let findMatches = [];
+let findIdx = -1;
+let findTimer = null;
+
+function clearFindMarks() {
+  docEl.querySelectorAll('mark.mdv-find, mark.mdv-find-current').forEach(m => {
+    m.replaceWith(document.createTextNode(m.textContent));
+  });
+  findMatches = [];
+  findIdx = -1;
+}
+
+function updateFindCount() {
+  const total = findMatches.length;
+  findCount.textContent = total > 0 ? (findIdx + 1) + '/' + total : '0/0';
+}
+
+function gotoFind(delta) {
+  if (findMatches.length === 0) return;
+  if (findIdx >= 0 && findMatches[findIdx]) findMatches[findIdx].classList.remove('mdv-find-current');
+  findIdx = (findIdx + delta + findMatches.length) % findMatches.length;
+  const m = findMatches[findIdx];
+  m.classList.add('mdv-find-current');
+  m.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  updateFindCount();
+}
+
+function doFind(scroll) {
+  const q = findInput.value;
+  clearFindMarks();
+  if (!q || !state.active) return;
+  const ql = q.toLowerCase();
+
+  const nodes = [];
+  const walker = document.createTreeWalker(docEl, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      if (node.parentElement && node.parentElement.closest && node.parentElement.closest('svg')) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  }, false);
+  let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+
+  for (const tn of nodes) {
+    const text = tn.textContent;
+    const lower = text.toLowerCase();
+    const frag = [];
+    let any = false;
+    let last = 0;
+    let i;
+    while ((i = lower.indexOf(ql, last)) !== -1) {
+      any = true;
+      if (i > last) frag.push(document.createTextNode(text.slice(last, i)));
+      const mark = document.createElement('mark');
+      mark.className = 'mdv-find';
+      mark.textContent = text.slice(i, i + q.length);
+      frag.push(mark);
+      findMatches.push(mark);
+      last = i + q.length;
+    }
+    if (!any) continue;
+    if (last < text.length) frag.push(document.createTextNode(text.slice(last)));
+    const parent = tn.parentNode;
+    const ref = tn.nextSibling;
+    for (const f of frag) parent.insertBefore(f, ref);
+    tn.remove();
+  }
+
+  findIdx = findMatches.length > 0 ? 0 : -1;
+  if (scroll !== false && findMatches.length > 0) {
+    findMatches[0].classList.add('mdv-find-current');
+    findMatches[0].scrollIntoView({ block: 'nearest' });
+  }
+  updateFindCount();
+}
+
+function openFind() {
+  if (!state.active) return;
+  findBar.hidden = false;
+  findInput.focus();
+  findInput.select();
+}
+
+function closeFind() {
+  findBar.hidden = true;
+  findInput.value = '';
+  clearFindMarks();
+}
+
+findInput.addEventListener('input', () => {
+  if (findTimer) clearTimeout(findTimer);
+  findTimer = setTimeout(() => doFind(true), 80);
+});
+findInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); gotoFind(e.shiftKey ? -1 : 1); }
+  else if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+});
+findPrevBtn.addEventListener('click', () => gotoFind(-1));
+findNextBtn.addEventListener('click', () => gotoFind(1));
+findCloseBtn.addEventListener('click', closeFind);
 
 /* ---------- Mermaid ---------- */
 let mermaidSeq = 0;
@@ -308,6 +417,7 @@ modalEl.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !modalEl.hidden) closeDiagram();
   if (e.key === 'Escape' && !aboutModal.hidden) closeAbout();
+  if (e.key === 'Escape' && !findBar.hidden) closeFind();
 });
 /* ---------- About 弹窗 ---------- */
 const GITHUB_URL = 'https://github.com/LaynePeng/markdown-viewer';
@@ -347,6 +457,9 @@ document.addEventListener('keydown', (e) => {
   } else if (e.key === 'e' || e.key === 'E') {
     e.preventDefault();
     toggleEdit();
+  } else if (e.key === 'f' || e.key === 'F') {
+    e.preventDefault();
+    openFind();
   }
 });
 
