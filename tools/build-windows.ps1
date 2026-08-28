@@ -1,4 +1,4 @@
-﻿﻿# Windows 打包脚本 (PowerShell)：NSIS 安装包
+﻿# Windows 打包脚本 (PowerShell)：NSIS 安装包
 # 用法: .\tools\build-windows.ps1 [-Insecure]
 #   -Insecure  跳过 TLS 证书校验（仅建议内网/自签证书环境使用）
 param([switch]$Insecure)
@@ -43,7 +43,7 @@ Invoke-Step "清理 dist" {
 }
 
 Invoke-Step "打包 Windows (NSIS)" {
-    npx electron-builder --win nsis
+    npx electron-builder --win nsis --publish never
 }
 
 Write-Host "==> 完成："
