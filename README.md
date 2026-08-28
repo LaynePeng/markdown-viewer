@@ -40,6 +40,8 @@ macOS 脚本支持指定架构：`./tools/build-macos.sh --arm64`（Apple Silico
 
 > 说明：Windows 建议在 Windows 机器上执行打包脚本；macOS 交叉打包 Windows 需另装 wine。
 >
+> macOS 包为 ad-hoc 签名（无 Apple 开发者证书，无法公证）。首次打开如提示「无法验证开发者」，请右键应用 →「打开」，或在 系统设置 → 隐私与安全性 中点击「仍然打开」；如提示「已损坏」，运行 `xattr -dr com.apple.quarantine "/Applications/Markdown Viewer.app"` 后重试。
+>
 > 网络受限环境（企业代理/自签证书）：脚本默认使用 npmmirror 镜像下载 Electron 及构建二进制；若仍报 `unable to verify the first certificate`，加 `--insecure` 参数跳过 TLS 校验（PowerShell 用 `-Insecure`）。
 
 ### GitHub Actions 构建（推荐）
