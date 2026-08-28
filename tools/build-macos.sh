@@ -40,7 +40,11 @@ echo "==> 清理 dist"
 rm -rf dist
 
 echo "==> 打包 macOS (zip + dmg) ${ARCH_ARGS[*]:-}"
-npx electron-builder --mac zip dmg --publish never "${ARCH_ARGS[@]}"
+if [ ${#ARCH_ARGS[@]} -gt 0 ]; then
+  npx electron-builder --mac zip dmg --publish never "${ARCH_ARGS[@]}"
+else
+  npx electron-builder --mac zip dmg --publish never
+fi
 
 echo "==> 完成："
 ls -lh dist/*.zip dist/*.dmg 2>/dev/null | awk '{print "    " $9 " (" $5 ")"}'
