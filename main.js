@@ -3,8 +3,10 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const os = require('os');
+const { pathToFileURL } = require('url');
 
 const GITHUB_URL = 'https://github.com/LaynePeng/markdown-viewer';
+const INDEX_URL = pathToFileURL(path.join(__dirname, 'renderer', 'index.html')).href;
 
 let mainWindow = null;
 let pendingFile = null;
@@ -44,8 +46,13 @@ function createWindow() {
   });
   mainWindow.on('closed', () => { mainWindow = null; windowReady = false; stopWatching(); });
 
+  /* 防止页面内链接/导航把应用窗口带离 index.html（如相对路径链接） */
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    if (url !== INDEX_URL) e.preventDefault();
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (/^https?:/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
 }
@@ -91,9 +98,11 @@ function showAbout() {
 }
 
 ipcMain.handle('open-external', (_e, url) => {
-  if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url);
+  if (typeof url === 'string' && /^(https?:|file:)\/\//i.test(url)) shell.openExternal(url);
   return { ok: true };
 });
+
+ipcMain.handle('get-version', () => app.getVersion());
 
 function setupMenu() {
   const isMac = process.platform === 'darwin';

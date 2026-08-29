@@ -183,6 +183,13 @@ function resolveAssetUrl(href) {
   return toFileUrl(state.dir + '/' + parts.join('/'));
 }
 
+function fileUrlToPath(u) {
+  let p = decodeURIComponent(u);
+  p = p.replace(/^file:\/\//i, '');
+  if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1);
+  return p;
+}
+
 const mdRenderer = new window.marked.Renderer();
 mdRenderer.image = ({ href, title, text }) => {
   const src = resolveAssetUrl(href);
@@ -225,7 +232,8 @@ function renderTabBar() {
   tabsEl.innerHTML = '';
   for (const tab of tabs) {
     const el = document.createElement('div');
-    el.className = 'tab' + (tab.id === activeTabId ? ' active' : '');
+    el.className = 'tab' + (tab.id === activeTabId ? ' active' : '') + (tab.error ? ' error' : '');
+    if (tab.error) el.title = '无法打开：' + tab.error;
     el.innerHTML = '<span class="tab-name">' + esc(basename(tab.filePath)) + '</span>'
       + (tab.dirty ? '<span class="dot"></span>' : '')
       + '<button class="tab-close" title="关闭">✕</button>';
@@ -242,9 +250,9 @@ function renderTabBar() {
   }
 }
 
-function addTab(filePath, content) {
+function addTab(filePath, content, error) {
   const id = 'tab_' + (++tabSeq);
-  const tab = { id, filePath, raw: content, editorContent: content, editing: false, dirty: false, scrollTop: 0, editorScrollTop: 0 };
+  const tab = { id, filePath, raw: content, editorContent: content, editing: false, dirty: false, scrollTop: 0, editorScrollTop: 0, error: error || null };
   tabs.push(tab);
   state.active = filePath;
   switchTab(id);
@@ -292,7 +300,14 @@ function switchTab(tabId) {
   filePathEl.title = tab.filePath;
   highlightTree(tab.filePath);
   const previewContent = tab.editing && tab.editorContent != null ? tab.editorContent : tab.raw;
-  renderMarkdown(previewContent);
+  if (tab.error) {
+    tab.editing = false;
+    docEl.hidden = false;
+    emptyEl.hidden = true;
+    docEl.innerHTML = '<div class="tab-error"><p class="tab-error-title">无法打开文件</p><p class="tab-error-path">' + esc(tab.filePath) + '</p><p class="tab-error-msg">' + esc(tab.error) + '</p></div>';
+  } else {
+    renderMarkdown(previewContent);
+  }
   editorEl.value = tab.editorContent != null ? tab.editorContent : tab.raw;
   if (tab.editing) {
     state.editing = true;
@@ -324,6 +339,47 @@ function openDocument(filePath, content) {
   }
   addTab(filePath, content);
 }
+
+/* ---------- 文档内链接 ---------- */
+async function openLinkTab(filePath) {
+  const clean = filePath.split(/[?#]/)[0];
+  const r = await api.readFile(clean);
+  if (r.ok) {
+    openDocument(clean, r.content);
+    return;
+  }
+  const existing = tabs.find(t => t.filePath === clean);
+  if (existing) { switchTab(existing.id); return; }
+  addTab(clean, '', r.error || '文件不存在或无法读取');
+}
+
+docEl.addEventListener('click', (e) => {
+  const a = e.target.closest('a');
+  if (!a) return;
+  const href = a.getAttribute('href');
+  if (!href) { e.preventDefault(); return; }
+  if (href.startsWith('#')) return;
+  e.preventDefault();
+  if (/^(https?:|mailto:|tel:)/i.test(href)) {
+    api.openExternal(href);
+    return;
+  }
+  if (/^(data:|blob:)/i.test(href)) return;
+  const abs = resolveAssetUrl(href);
+  const clean = fileUrlToPath(abs).split(/[?#]/)[0];
+  if (isMarkdown(clean)) openLinkTab(clean);
+  else api.openExternal(abs);
+});
+
+docEl.addEventListener('auxclick', (e) => {
+  if (e.button !== 1) return;
+  const a = e.target.closest('a');
+  if (!a) return;
+  const href = a.getAttribute('href');
+  if (!href || href.startsWith('#')) return;
+  e.preventDefault();
+  a.click();
+});
 
 /* ---------- 文档内查找 ---------- */
 let findMatches = [];
@@ -657,8 +713,9 @@ function updateEditButtons() {
 
 function enterEdit() {
   if (!state.active) return;
-  state.editing = true;
   const tab = getActiveTab();
+  if (tab && tab.error) return;
+  state.editing = true;
   if (tab) tab.editing = true;
   document.body.classList.add('editing');
   $('#content').classList.add('editing');
@@ -772,6 +829,7 @@ api.onFileChanged(p => {
       tab.raw = r.content;
       tab.editorContent = r.content;
       tab.dirty = false;
+      tab.error = null;
     }
     state.raw = r.content;
     editorEl.value = r.content;
@@ -952,6 +1010,7 @@ document.addEventListener('click', (e) => {
 
 /* ---------- 初始化 ---------- */
 applyCfg();
+api.getVersion().then(v => { if (v) $('#about-version').textContent = v; });
 if (cfg.customCss) {
   api.readFile(cfg.customCss).then(r => { if (r.ok) initCustomCss(r.content); cssFileNameEl.textContent = cfg.customCss; });
 }
