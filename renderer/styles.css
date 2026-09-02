@@ -978,6 +978,46 @@ body[data-theme="dark"] #doc.markdown-body pre {
 
 .about-body .associate-status.ok { color: var(--fgColor-success); }
 
+/* ---------- 插入链接/图片弹窗 ---------- */
+#insert-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+#insert-modal[hidden] { display: none; }
+.insert-box {
+  width: 440px;
+  max-width: 92vw;
+  height: auto;
+}
+.insert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+#insert-modal-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--btn-border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  outline: none;
+}
+#insert-modal-input:focus { border-color: var(--accent); }
+.insert-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.insert-actions #insert-modal-file { margin-right: auto; }
+
 /* ---------- 滚动条 ---------- */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--sidebar-border); border-radius: 5px; }

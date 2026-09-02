@@ -20,6 +20,13 @@ const editorEl = $('#editor');
 const editorPane = $('#editor-pane');
 const wysiwygEl = $('#wysiwyg');
 const tbModeToggle = $('#tb-mode-toggle');
+const insertModal = $('#insert-modal');
+const insertModalTitle = $('#insert-modal-title');
+const insertModalInput = $('#insert-modal-input');
+const insertModalFile = $('#insert-modal-file');
+const insertModalCancel = $('#insert-modal-cancel');
+const insertModalOk = $('#insert-modal-ok');
+const insertModalClose = $('#insert-modal-close');
 const findBar = $('#find-bar');
 const findInput = $('#find-input');
 const findCount = $('#find-count');
@@ -970,7 +977,7 @@ function insertAtCursor(text) {
 const TABLE_TEMPLATE = '\n| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n';
 const COMMENT_TEMPLATE = '<!-- 注释 -->';
 
-function execSourceCmd(cmd, lang) {
+function execSourceCmd(cmd, lang, extra) {
   if (!state.active || !state.editing) return;
   if (cmd === 'undo') { tbUndo(); return; }
   if (cmd === 'redo') { tbRedo(); return; }
@@ -986,37 +993,33 @@ function execSourceCmd(cmd, lang) {
     case 'h5': linePrefix('##### '); break;
     case 'h6': linePrefix('###### '); break;
     case 'link': {
-      const url = window.prompt('链接地址（http:// 或相对路径，留空选择本地文件）：', 'https://');
-      if (url) {
-        wrapSelection('[', '](' + url + ')', '链接文字');
-      } else {
-        pickLocalFile('*', (p) => {
-          if (!p) return;
-          pushHistory();
-          const rel = relPathFromDir(state.dir, p) || p;
-          wrapSelection('[', '](' + rel + ')', '链接文字');
-          afterTbEdit();
-        });
-      }
-      break;
+      const range = { start: editorEl.selectionStart, end: editorEl.selectionEnd };
+      showInsertModal('link', value => {
+        if (!value) return;
+        editorEl.focus();
+        editorEl.setSelectionRange(range.start, range.end);
+        pushHistory();
+        wrapSelection('[', '](' + relativeAssetPath(value) + ')', '链接文字');
+        afterTbEdit();
+      });
+      return;
     }
     case 'image': {
-      const url = window.prompt('图片地址（http:// 或相对路径，留空选择本地文件）：', '');
-      if (url) {
-        wrapSelection('![', '](' + url + ')', '图片描述');
-      } else {
-        pickLocalFile('image/*', (p) => {
-          if (!p) return;
-          pushHistory();
-          const rel = relPathFromDir(state.dir, p) || p;
-          wrapSelection('![', '](' + rel + ')', '图片描述');
-          afterTbEdit();
-        });
-      }
-      break;
+      const range = { start: editorEl.selectionStart, end: editorEl.selectionEnd };
+      showInsertModal('image', value => {
+        if (!value) return;
+        editorEl.focus();
+        editorEl.setSelectionRange(range.start, range.end);
+        pushHistory();
+        wrapSelection('![', '](' + relativeAssetPath(value) + ')', '图片描述');
+        afterTbEdit();
+      });
+      return;
     }
     case 'table-insert': {
-      const dims = promptTableDims();
+      const dims = (extra && extra.rows && extra.cols)
+        ? extra
+        : promptTableDims();
       if (dims) insertAtCursor(buildMarkdownTable(dims.cols, dims.rows));
       break;
     }
@@ -1080,31 +1083,25 @@ function execWysiwygCmd(cmd, lang, extra) {
     }
     case 'link': {
       const sel = getSelText() || '链接文字';
-      const url = window.prompt('链接地址（http:// 或本地路径，留空选择本地文件）：', 'https://');
-      if (url) {
-        document.execCommand('insertHTML', false, '<a href="' + esc(url) + '">' + esc(sel) + '</a>');
-      } else {
-        pickLocalFile('*', (p) => {
-          if (!p) return;
-          restoreSelection(savedRange);
-          document.execCommand('insertHTML', false, '<a href="' + esc(resolveAssetUrl(p)) + '">' + esc(sel) + '</a>');
-        });
-      }
-      break;
+      const range = savedRange;
+      showInsertModal('link', value => {
+        if (!value) return;
+        restoreSelection(range);
+        document.execCommand('insertHTML', false, '<a href="' + esc(relativeAssetPath(value)) + '">' + esc(sel) + '</a>');
+        onWysiwygInput();
+      });
+      return;
     }
     case 'image': {
-      const url = window.prompt('图片地址（http:// 或本地路径，留空选择本地文件）：', '');
-      if (url) {
-        const src = /^(https?:|file:)/i.test(url) ? url : resolveAssetUrl(url);
+      const range = savedRange;
+      showInsertModal('image', value => {
+        if (!value) return;
+        restoreSelection(range);
+        const src = /^(https?:|file:)/i.test(value) ? value : resolveAssetUrl(value);
         document.execCommand('insertHTML', false, '<img src="' + esc(src) + '" alt="图片">');
-      } else {
-        pickLocalFile('image/*', (p) => {
-          if (!p) return;
-          restoreSelection(savedRange);
-          document.execCommand('insertHTML', false, '<img src="' + esc(resolveAssetUrl(p)) + '" alt="图片">');
-        });
-      }
-      break;
+        onWysiwygInput();
+      });
+      return;
     }
     case 'table-insert': {
       const rows = (extra && extra.rows) || 3;
@@ -1116,9 +1113,13 @@ function execWysiwygCmd(cmd, lang, extra) {
     case 'table-row-below': addTableRow('below'); break;
     case 'table-col-left': addTableCol('left'); break;
     case 'table-col-right': addTableCol('right'); break;
+    case 'task': {
+      const text = getSelText() || '任务';
+      document.execCommand('insertHTML', false, '<ul><li><input type="checkbox" disabled> ' + esc(text) + '</li></ul>');
+      break;
+    }
     case 'comment':
-    case 'task':
-      // 仅源码模式支持
+      // 注释不会在所见即所得编辑区显示，保留在源码模式使用
       return;
     default:
       return;
@@ -1133,9 +1134,13 @@ function execToolbarCmd(cmd, lang, extra) {
   if (tab && tab.editMode === 'wysiwyg') {
     execWysiwygCmd(cmd, lang, extra);
   } else {
-    execSourceCmd(cmd, lang);
+    execSourceCmd(cmd, lang, extra);
   }
 }
+
+toolbarEl.addEventListener('mousedown', (e) => {
+  if (e.target.closest('.tb-btn, .tb-menu-item')) e.preventDefault();
+});
 
 toolbarEl.addEventListener('click', (e) => {
   const item = e.target.closest('.tb-menu-item');
@@ -1170,10 +1175,9 @@ toolbarEl.addEventListener('click', (e) => {
         });
         sizeLabel.textContent = (r + 1) + ' × ' + (c + 1);
       });
+      cell.addEventListener('mousedown', e => e.preventDefault());
       cell.addEventListener('click', () => {
         execToolbarCmd('table-insert', null, { rows: r + 1, cols: c + 1 });
-        const menu = gridEl.closest('.tb-menu');
-        if (menu) menu.style.display = 'none';
       });
       gridEl.appendChild(cell);
     }
@@ -1188,7 +1192,7 @@ toolbarEl.addEventListener('click', (e) => {
 function addTableRow(dir) {
   const sel = window.getSelection();
   if (!sel.rangeCount) return;
-  const cell = sel.getRangeAt(0).startContainer.closest('td, th');
+  const cell = tableCellFromSelection();
   if (!cell) return;
   const row = cell.closest('tr');
   const newRow = row.cloneNode(true);
@@ -1200,7 +1204,7 @@ function addTableRow(dir) {
 function addTableCol(dir) {
   const sel = window.getSelection();
   if (!sel.rangeCount) return;
-  const cell = sel.getRangeAt(0).startContainer.closest('td, th');
+  const cell = tableCellFromSelection();
   if (!cell) return;
   const idx = cell.cellIndex;
   cell.closest('table').querySelectorAll('tr').forEach(row => {
@@ -1268,6 +1272,71 @@ function restoreSelection(range) {
   sel.removeAllRanges();
   sel.addRange(range);
 }
+
+function relativeAssetPath(value) {
+  const v = String(value || '').trim();
+  if (!v || /^(https?:|data:|blob:|mailto:|tel:|#)/i.test(v)) return v;
+  if (/^file:\/\//i.test(v)) {
+    const rel = relPathFromDir(state.dir, fileUrlToPath(v));
+    return rel || v;
+  }
+  if (/^(?:[A-Za-z]:[\\/]|[\\/]{2}|\/)/.test(v)) {
+    const rel = relPathFromDir(state.dir, v);
+    return rel || v;
+  }
+  return v;
+}
+
+function tableCellFromSelection() {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return null;
+  let node = sel.getRangeAt(0).startContainer;
+  if (node.nodeType !== Node.ELEMENT_NODE) node = node.parentElement;
+  return node && node.closest ? node.closest('#wysiwyg td, #wysiwyg th') : null;
+}
+
+/* ---------- 插入链接/图片对话框 ---------- */
+let insertModalCallback = null;
+
+function showInsertModal(kind, callback) {
+  insertModalCallback = callback;
+  insertModal.dataset.kind = kind;
+  insertModalTitle.textContent = kind === 'image' ? '插入图片' : '插入链接';
+  insertModalInput.value = '';
+  insertModalInput.placeholder = kind === 'image'
+    ? '输入图片 URL 或相对路径，也可选择本地图片'
+    : '输入链接 URL 或相对路径，也可选择本地文件';
+  insertModalFile.textContent = kind === 'image' ? '选择本地图片' : '选择本地文件';
+  insertModal.hidden = false;
+  insertModalInput.focus();
+}
+
+function closeInsertModal(value) {
+  const callback = insertModalCallback;
+  insertModalCallback = null;
+  insertModal.hidden = true;
+  if (callback) callback(value || null);
+}
+
+insertModalOk.addEventListener('click', () => closeInsertModal(insertModalInput.value.trim()));
+insertModalCancel.addEventListener('click', () => closeInsertModal(null));
+insertModalClose.addEventListener('click', () => closeInsertModal(null));
+insertModalInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === 'Escape') {
+    e.preventDefault();
+    closeInsertModal(e.key === 'Enter' ? insertModalInput.value.trim() : null);
+  }
+});
+insertModalFile.addEventListener('click', () => {
+  const kind = insertModal.dataset.kind;
+  const callback = insertModalCallback;
+  insertModalCallback = null;
+  insertModal.hidden = true;
+  pickLocalFile(kind === 'image' ? 'image/*' : '*', p => { if (callback) callback(p); });
+});
+insertModal.addEventListener('click', e => {
+  if (e.target === insertModal || e.target.classList.contains('modal-backdrop')) closeInsertModal(null);
+});
 
 /* ---------- Turndown HTML→Markdown 转换 ---------- */
 let turndownSvc = null;

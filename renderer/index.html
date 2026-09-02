@@ -273,6 +273,24 @@
   </div>
 </div>
 
+<div id="insert-modal" hidden>
+  <div class="modal-backdrop"></div>
+  <div class="modal-box insert-box">
+    <div class="modal-head">
+      <span id="insert-modal-title">插入</span>
+      <button id="insert-modal-close" class="btn btn-icon" title="关闭">✕</button>
+    </div>
+    <div class="insert-body">
+      <input id="insert-modal-input" type="text" spellcheck="false">
+      <div class="insert-actions">
+        <button id="insert-modal-file" class="btn">选择本地文件</button>
+        <button id="insert-modal-cancel" class="btn">取消</button>
+        <button id="insert-modal-ok" class="btn">确定</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="vendor/marked.umd.js"></script>
 <script src="vendor/turndown.js"></script>
 <script src="vendor/turndown-plugin-gfm.js"></script>
