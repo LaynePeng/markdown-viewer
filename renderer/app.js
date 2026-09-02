@@ -183,13 +183,14 @@ function resolveAssetUrl(href) {
   if (/^(https?:|data:|file:|blob:|mailto:|#)/i.test(href)) return href;
   let clean = href.replace(/\\/g, '/').replace(/^\.\//, '');
   if (clean.startsWith('/') || /^[A-Za-z]:\//.test(clean)) return toFileUrl(clean);
-  const parts = [];
+  // 以文档目录为基准，合并相对路径后再归一化
+  const base = (state.dir || '').replace(/\\/g, '/').split('/');
   for (const s of clean.split('/')) {
     if (!s || s === '.') continue;
-    if (s === '..') parts.pop();
-    else parts.push(s);
+    if (s === '..') { if (base.length) base.pop(); }
+    else base.push(s);
   }
-  return toFileUrl(state.dir + '/' + parts.join('/'));
+  return toFileUrl(base.join('/'));
 }
 
 function fileUrlToPath(u) {
@@ -882,6 +883,7 @@ function onWysiwygInput() {
     const md = htmlToMarkdown(wysiwygEl.innerHTML);
     if (tab) tab.editorContent = md;
     renderMarkdown(md);
+    updateToolbarState();
   }, 300);
 }
 
@@ -1096,7 +1098,8 @@ function execWysiwygCmd(cmd, lang, extra) {
       const range = savedRange;
       showInsertModal('image', value => {
         if (!value) return;
-        restoreSelection(range);
+        wysiwygEl.focus();
+        if (range) restoreSelection(range);
         const src = /^(https?:|file:)/i.test(value) ? value : resolveAssetUrl(value);
         document.execCommand('insertHTML', false, '<img src="' + esc(src) + '" alt="图片">');
         onWysiwygInput();
@@ -1126,6 +1129,44 @@ function execWysiwygCmd(cmd, lang, extra) {
   }
   // execCommand 会触发 input 事件，onWysiwygInput 会处理
   wysiwygEl.focus();
+  updateToolbarState();
+}
+
+/* ---------- 工具栏状态同步（WYSIWYG 选区格式高亮） ---------- */
+function updateToolbarState() {
+  const tab = getActiveTab();
+  if (!tab || tab.editMode !== 'wysiwyg' || !state.editing) return;
+  toolbarEl.querySelectorAll('.tb-btn.active, .tb-menu-item.active').forEach(el => el.classList.remove('active'));
+
+  const states = {
+    bold: document.queryCommandState('bold'),
+    italic: document.queryCommandState('italic'),
+    strike: document.queryCommandState('strikeThrough'),
+    ul: document.queryCommandState('insertUnorderedList'),
+    ol: document.queryCommandState('insertOrderedList')
+  };
+  for (const [cmd, active] of Object.entries(states)) {
+    if (active) highlightCmd(cmd);
+  }
+
+  const block = document.queryCommandValue('formatBlock').toLowerCase();
+  if (/^h[1-6]$/.test(block)) highlightCmd(block);
+
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount) {
+    let node = sel.getRangeAt(0).startContainer;
+    if (node.nodeType === 3) node = node.parentElement;
+    if (node.closest('a')) highlightCmd('link');
+    if (node.closest('code')) highlightCmd('code');
+    if (node.closest('pre')) highlightCmd('codeblock');
+  }
+}
+
+function highlightCmd(cmd) {
+  const btn = toolbarEl.querySelector(`.tb-btn[data-cmd="${cmd}"]`);
+  if (btn) btn.classList.add('active');
+  const item = toolbarEl.querySelector(`.tb-menu-item[data-cmd="${cmd}"]`);
+  if (item) item.classList.add('active');
 }
 
 /* ---------- 双模式分派 ---------- */
@@ -1457,6 +1498,10 @@ wysiwygEl.addEventListener('paste', (e) => {
   const text = (e.clipboardData || window.clipboardData).getData('text/plain');
   document.execCommand('insertText', false, text);
 });
+
+/* 光标移动时同步工具栏高亮状态 */
+wysiwygEl.addEventListener('mouseup', () => setTimeout(updateToolbarState, 50));
+wysiwygEl.addEventListener('keyup', () => setTimeout(updateToolbarState, 50));
 
 /* ---------- 自动刷新 ---------- */
 let fileRefreshTimer = null;

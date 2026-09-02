@@ -520,6 +520,11 @@ body.wysiwyg-mode #content.editing #doc {
 }
 .tb-btn:hover { background: var(--hover); border-color: var(--btn-border); }
 .tb-btn:active { transform: translateY(1px); }
+.tb-btn.active {
+  background: var(--active);
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .tb-btn b { font-weight: 700; }
 .tb-btn i { font-style: italic; }
 .tb-btn s { text-decoration: line-through; }
@@ -565,6 +570,10 @@ body.wysiwyg-mode #content.editing #doc {
   font-family: inherit;
 }
 .tb-menu-item:hover { background: var(--hover); }
+.tb-menu-item.active {
+  background: var(--active);
+  color: var(--accent);
+}
 .tb-menu-item code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
