@@ -104,7 +104,21 @@
           <span class="tb-group">
             <button class="tb-btn" data-cmd="link" title="链接">🔗</button>
             <button class="tb-btn" data-cmd="image" title="图片">🖼</button>
-            <button class="tb-btn" data-cmd="table" title="插入表格">⊞</button>
+            <span class="tb-drop">
+              <button class="tb-btn tb-drop-trigger" title="插入表格">⊞<span class="caret">▾</span></button>
+              <div class="tb-menu tb-menu-grid">
+                <div class="table-grid">
+                  <div class="grid-cells" id="table-grid-cells"></div>
+                  <div class="grid-size">0 × 0</div>
+                </div>
+                <div class="tb-menu-sep"></div>
+                <div class="tb-menu-subtitle">表格操作</div>
+                <button class="tb-menu-item" data-cmd="table-row-above">↑ 插入行（上方）</button>
+                <button class="tb-menu-item" data-cmd="table-row-below">↓ 插入行（下方）</button>
+                <button class="tb-menu-item" data-cmd="table-col-left">← 插入列（左侧）</button>
+                <button class="tb-menu-item" data-cmd="table-col-right">→ 插入列（右侧）</button>
+              </div>
+            </span>
             <span class="tb-drop">
               <button class="tb-btn tb-drop-trigger" title="更多插入">+<span class="caret">▾</span></button>
               <span class="tb-menu">

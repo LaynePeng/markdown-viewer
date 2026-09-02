@@ -985,9 +985,44 @@ function execSourceCmd(cmd, lang) {
     case 'h4': linePrefix('#### '); break;
     case 'h5': linePrefix('##### '); break;
     case 'h6': linePrefix('###### '); break;
-    case 'link': wrapSelection('[', '](https://)', '链接文字'); break;
-    case 'image': wrapSelection('![', '](https://)', '图片描述'); break;
-    case 'table': insertAtCursor(TABLE_TEMPLATE); break;
+    case 'link': {
+      const url = window.prompt('链接地址（http:// 或相对路径，留空选择本地文件）：', 'https://');
+      if (url) {
+        wrapSelection('[', '](' + url + ')', '链接文字');
+      } else {
+        pickLocalFile('*', (p) => {
+          if (!p) return;
+          pushHistory();
+          const rel = relPathFromDir(state.dir, p) || p;
+          wrapSelection('[', '](' + rel + ')', '链接文字');
+          afterTbEdit();
+        });
+      }
+      break;
+    }
+    case 'image': {
+      const url = window.prompt('图片地址（http:// 或相对路径，留空选择本地文件）：', '');
+      if (url) {
+        wrapSelection('![', '](' + url + ')', '图片描述');
+      } else {
+        pickLocalFile('image/*', (p) => {
+          if (!p) return;
+          pushHistory();
+          const rel = relPathFromDir(state.dir, p) || p;
+          wrapSelection('![', '](' + rel + ')', '图片描述');
+          afterTbEdit();
+        });
+      }
+      break;
+    }
+    case 'table-insert': {
+      const dims = promptTableDims();
+      if (dims) insertAtCursor(buildMarkdownTable(dims.cols, dims.rows));
+      break;
+    }
+    case 'table-row-above': case 'table-row-below':
+    case 'table-col-left': case 'table-col-right':
+      break;
     case 'hr': insertAtCursor('\n---\n'); break;
     case 'quote': linePrefix('> '); break;
     case 'comment': insertAtCursor(COMMENT_TEMPLATE); break;
@@ -1009,8 +1044,9 @@ function getSelText() {
   return s ? s.toString() : '';
 }
 
-function execWysiwygCmd(cmd, lang) {
+function execWysiwygCmd(cmd, lang, extra) {
   if (!state.active || !state.editing) return;
+  const savedRange = saveSelection();
   wysiwygEl.focus();
   switch (cmd) {
     case 'undo': document.execCommand('undo'); break;
@@ -1044,24 +1080,42 @@ function execWysiwygCmd(cmd, lang) {
     }
     case 'link': {
       const sel = getSelText() || '链接文字';
-      const url = window.prompt('链接地址：', 'https://');
-      if (url) document.execCommand('insertHTML', false, '<a href="' + esc(url) + '">' + esc(sel) + '</a>');
-      break;
-    }
-    case 'image': {
-      const url = window.prompt('图片地址（本地路径或 http 链接）：', '');
+      const url = window.prompt('链接地址（http:// 或本地路径，留空选择本地文件）：', 'https://');
       if (url) {
-        const src = /^(https?:|file:)/i.test(url) ? url : resolveAssetUrl(url);
-        document.execCommand('insertHTML', false, '<img src="' + esc(src) + '" alt="图片">');
+        document.execCommand('insertHTML', false, '<a href="' + esc(url) + '">' + esc(sel) + '</a>');
+      } else {
+        pickLocalFile('*', (p) => {
+          if (!p) return;
+          restoreSelection(savedRange);
+          document.execCommand('insertHTML', false, '<a href="' + esc(resolveAssetUrl(p)) + '">' + esc(sel) + '</a>');
+        });
       }
       break;
     }
-    case 'table': {
-      document.execCommand('insertHTML', false,
-        '<table><thead><tr><th>列1</th><th>列2</th><th>列3</th></tr></thead>' +
-        '<tbody><tr><td>内容</td><td>内容</td><td>内容</td></tr></tbody></table>');
+    case 'image': {
+      const url = window.prompt('图片地址（http:// 或本地路径，留空选择本地文件）：', '');
+      if (url) {
+        const src = /^(https?:|file:)/i.test(url) ? url : resolveAssetUrl(url);
+        document.execCommand('insertHTML', false, '<img src="' + esc(src) + '" alt="图片">');
+      } else {
+        pickLocalFile('image/*', (p) => {
+          if (!p) return;
+          restoreSelection(savedRange);
+          document.execCommand('insertHTML', false, '<img src="' + esc(resolveAssetUrl(p)) + '" alt="图片">');
+        });
+      }
       break;
     }
+    case 'table-insert': {
+      const rows = (extra && extra.rows) || 3;
+      const cols = (extra && extra.cols) || 3;
+      document.execCommand('insertHTML', false, buildTableHtml(cols, rows));
+      break;
+    }
+    case 'table-row-above': addTableRow('above'); break;
+    case 'table-row-below': addTableRow('below'); break;
+    case 'table-col-left': addTableCol('left'); break;
+    case 'table-col-right': addTableCol('right'); break;
     case 'comment':
     case 'task':
       // 仅源码模式支持
@@ -1074,10 +1128,10 @@ function execWysiwygCmd(cmd, lang) {
 }
 
 /* ---------- 双模式分派 ---------- */
-function execToolbarCmd(cmd, lang) {
+function execToolbarCmd(cmd, lang, extra) {
   const tab = getActiveTab();
   if (tab && tab.editMode === 'wysiwyg') {
-    execWysiwygCmd(cmd, lang);
+    execWysiwygCmd(cmd, lang, extra);
   } else {
     execSourceCmd(cmd, lang);
   }
@@ -1096,6 +1150,124 @@ toolbarEl.addEventListener('click', (e) => {
     execToolbarCmd(btn.dataset.cmd);
   }
 });
+
+/* ---------- 表格网格选择器 ---------- */
+(function initTableGrid() {
+  const gridEl = document.getElementById('table-grid-cells');
+  if (!gridEl) return;
+  const sizeLabel = gridEl.closest('.table-grid').querySelector('.grid-size');
+  const MAX = 9;
+  gridEl.innerHTML = '';
+  for (let r = 0; r < MAX; r++) {
+    for (let c = 0; c < MAX; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'grid-cell';
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      cell.addEventListener('mouseenter', () => {
+        gridEl.querySelectorAll('.grid-cell').forEach(el => {
+          el.classList.toggle('hover', parseInt(el.dataset.r) <= r && parseInt(el.dataset.c) <= c);
+        });
+        sizeLabel.textContent = (r + 1) + ' × ' + (c + 1);
+      });
+      cell.addEventListener('click', () => {
+        execToolbarCmd('table-insert', null, { rows: r + 1, cols: c + 1 });
+        const menu = gridEl.closest('.tb-menu');
+        if (menu) menu.style.display = 'none';
+      });
+      gridEl.appendChild(cell);
+    }
+  }
+  gridEl.addEventListener('mouseleave', () => {
+    gridEl.querySelectorAll('.grid-cell').forEach(el => el.classList.remove('hover'));
+    sizeLabel.textContent = '0 × 0';
+  });
+})();
+
+/* ---------- WYSIWYG 表格行/列操作 ---------- */
+function addTableRow(dir) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  const cell = sel.getRangeAt(0).startContainer.closest('td, th');
+  if (!cell) return;
+  const row = cell.closest('tr');
+  const newRow = row.cloneNode(true);
+  newRow.querySelectorAll('td, th').forEach(c => { c.innerHTML = '&nbsp;'; });
+  if (dir === 'above') row.parentNode.insertBefore(newRow, row);
+  else row.parentNode.insertBefore(newRow, row.nextSibling);
+  onWysiwygInput();
+}
+function addTableCol(dir) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  const cell = sel.getRangeAt(0).startContainer.closest('td, th');
+  if (!cell) return;
+  const idx = cell.cellIndex;
+  cell.closest('table').querySelectorAll('tr').forEach(row => {
+    const tag = row.children[0] ? row.children[0].tagName : 'td';
+    const newCell = document.createElement(tag);
+    newCell.innerHTML = '&nbsp;';
+    row.insertBefore(newCell, dir === 'left' ? row.children[idx] : (row.children[idx + 1] || null));
+  });
+  onWysiwygInput();
+}
+
+/* ---------- 插入辅助 ---------- */
+function promptTableDims() {
+  const colsInput = window.prompt('表格列数（1-12）：', '3');
+  if (colsInput == null) return null;
+  const rowsInput = window.prompt('表格行数（1-30）：', '3');
+  if (rowsInput == null) return null;
+  return {
+    cols: Math.min(Math.max(parseInt(colsInput, 10) || 3, 1), 12),
+    rows: Math.min(Math.max(parseInt(rowsInput, 10) || 3, 1), 30)
+  };
+}
+
+function buildMarkdownTable(cols, rows) {
+  let md = '\n|' + Array.from({ length: cols }, (_, i) => ' 列' + (i + 1) + ' ').join('|') + '|\n';
+  md += '|' + Array(cols).fill(' --- ').join('|') + '|\n';
+  for (let r = 1; r <= rows; r++) md += '|' + Array(cols).fill(' 内容 ').join('|') + '|\n';
+  return md;
+}
+
+function buildTableHtml(cols, rows) {
+  let html = '<table><thead><tr>';
+  for (let c = 1; c <= cols; c++) html += '<th>列' + c + '</th>';
+  html += '</tr></thead><tbody>';
+  for (let r = 1; r <= rows; r++) {
+    html += '<tr>';
+    for (let c = 1; c <= cols; c++) html += '<td>内容</td>';
+    html += '</tr>';
+  }
+  return html + '</tbody></table>';
+}
+
+function pickLocalFile(accept, cb) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = accept;
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', () => {
+    const f = input.files[0];
+    input.remove();
+    cb(f ? api.filePathFor(f) : null);
+  });
+  input.click();
+}
+
+function saveSelection() {
+  const sel = window.getSelection();
+  return sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+}
+
+function restoreSelection(range) {
+  if (!range) return;
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
 
 /* ---------- Turndown HTML→Markdown 转换 ---------- */
 let turndownSvc = null;
@@ -1126,6 +1298,22 @@ function initTurndown() {
         } catch { /* 保持原路径 */ }
       }
       return '![' + alt + '](' + src + ')';
+    }
+  });
+  // 链接路径还原：file:// 绝对路径 → 相对路径
+  turndownSvc.addRule('link', {
+    filter: 'a',
+    replacement: (content, node) => {
+      let href = node.getAttribute('href') || '';
+      if (/^file:\/\//i.test(href)) {
+        try {
+          const abs = fileUrlToPath(href);
+          const rel = relPathFromDir(state.dir, abs);
+          if (rel) href = rel;
+        } catch { /* 保持原样 */ }
+      }
+      if (!href) return content;
+      return '[' + content + '](' + href + ')';
     }
   });
 }
