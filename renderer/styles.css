@@ -598,6 +598,31 @@ body.resizing, body.resizing * { user-select: none; cursor: col-resize; }
   overflow: auto;
 }
 
+#editor[hidden] { display: none; }
+
+/* ---------- 所见即所得编辑区 ---------- */
+#wysiwyg {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  padding: 18px 22px 40px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 15px;
+  line-height: 1.7;
+  outline: none;
+  caret-color: var(--accent);
+}
+#wysiwyg[hidden] { display: none; }
+#wysiwyg:focus { outline: none; }
+#wysiwyg img { max-width: 100%; cursor: default; }
+#wysiwyg table { border-collapse: collapse; }
+#wysiwyg th, #wysiwyg td { border: 1px solid var(--borderColor-default); padding: 4px 10px; }
+#wysiwyg pre { position: relative; }
+#wysiwyg blockquote { cursor: text; }
+#wysiwyg::selection, #wysiwyg *::selection { background: var(--active); }
+
 #content.editing #doc {
   max-width: none;
   flex: 1 1 auto;

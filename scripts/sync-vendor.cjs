@@ -10,7 +10,9 @@ const files = [
   ['node_modules/highlight.js/styles/github.css', 'highlight-github.css'],
   ['node_modules/highlight.js/styles/github-dark.css', 'highlight-github-dark.css'],
   ['node_modules/marked/lib/marked.umd.js', 'marked.umd.js'],
-  ['node_modules/mermaid/dist/mermaid.min.js', 'mermaid.min.js']
+  ['node_modules/mermaid/dist/mermaid.min.js', 'mermaid.min.js'],
+  ['node_modules/turndown/dist/turndown.js', 'turndown.js'],
+  ['node_modules/turndown-plugin-gfm/dist/turndown-plugin-gfm.js', 'turndown-plugin-gfm.js']
 ];
 
 for (const [src, dst] of files) {

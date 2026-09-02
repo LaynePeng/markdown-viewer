@@ -145,7 +145,12 @@
               </span>
             </span>
           </span>
+          <span class="tb-sep"></span>
+          <span class="tb-group">
+            <button class="tb-btn" id="tb-mode-toggle" title="切换到源码模式">源码</button>
+          </span>
         </div>
+        <div id="wysiwyg" class="markdown-body" contenteditable="true" spellcheck="false" hidden></div>
         <textarea id="editor" spellcheck="false" placeholder="在左侧编辑 Markdown，右侧实时预览"></textarea>
       </div>
       <div id="divider" title="拖动调整左右宽度"></div>
@@ -256,6 +261,8 @@
 </div>
 
 <script src="vendor/marked.umd.js"></script>
+<script src="vendor/turndown.js"></script>
+<script src="vendor/turndown-plugin-gfm.js"></script>
 <script src="hljs.js"></script>
 <script src="vendor/mermaid.min.js"></script>
 <script src="app.js"></script>

@@ -18,6 +18,8 @@ const btnEdit = $('#btn-edit');
 const btnSave = $('#btn-save');
 const editorEl = $('#editor');
 const editorPane = $('#editor-pane');
+const wysiwygEl = $('#wysiwyg');
+const tbModeToggle = $('#tb-mode-toggle');
 const findBar = $('#find-bar');
 const findInput = $('#find-input');
 const findCount = $('#find-count');
@@ -225,7 +227,7 @@ function saveTabState(tab) {
   if (!tab) return;
   tab.scrollTop = docEl.scrollTop;
   tab.editorScrollTop = editorEl.scrollTop;
-  tab.editorContent = editorEl.value;
+  tab.editorContent = tab.editMode === 'wysiwyg' ? htmlToMarkdown(wysiwygEl.innerHTML) : editorEl.value;
 }
 
 function renderTabBar() {
@@ -252,7 +254,7 @@ function renderTabBar() {
 
 function addTab(filePath, content, error) {
   const id = 'tab_' + (++tabSeq);
-  const tab = { id, filePath, raw: content, editorContent: content, editing: false, dirty: false, scrollTop: 0, editorScrollTop: 0, error: error || null };
+  const tab = { id, filePath, raw: content, editorContent: content, editing: false, dirty: false, scrollTop: 0, editorScrollTop: 0, error: error || null, editMode: 'wysiwyg' };
   tabs.push(tab);
   state.active = filePath;
   switchTab(id);
@@ -283,7 +285,7 @@ function switchTab(tabId) {
   if (prev) {
     prev.scrollTop = docEl.scrollTop;
     prev.editorScrollTop = editorEl.scrollTop;
-    prev.editorContent = editorEl.value;
+    prev.editorContent = prev.editMode === 'wysiwyg' ? htmlToMarkdown(wysiwygEl.innerHTML) : editorEl.value;
   }
   activeTabId = tabId;
   const tab = getActiveTab();
@@ -308,21 +310,34 @@ function switchTab(tabId) {
   } else {
     renderMarkdown(previewContent);
   }
-  editorEl.value = tab.editorContent != null ? tab.editorContent : tab.raw;
+  const content = tab.editorContent != null ? tab.editorContent : tab.raw;
+  editorEl.value = content;
+  wysiwygEl.innerHTML = markdownToEditorHtml(content);
   if (tab.editing) {
     state.editing = true;
     document.body.classList.add('editing');
     $('#content').classList.add('editing');
     editorPane.hidden = false;
+    if (tab.editMode === 'source') {
+      wysiwygEl.hidden = true;
+      editorEl.hidden = false;
+    } else {
+      tab.editMode = 'wysiwyg';
+      wysiwygEl.hidden = false;
+      editorEl.hidden = true;
+    }
   } else {
     state.editing = false;
     document.body.classList.remove('editing');
     $('#content').classList.remove('editing');
     editorPane.hidden = true;
+    wysiwygEl.hidden = true;
+    editorEl.hidden = false;
   }
   state.dirty = tab.dirty;
   state.editing = tab.editing;
   updateEditButtons();
+  updateModeToggleUI();
   docEl.hidden = false;
   emptyEl.hidden = true;
   docEl.scrollTop = tab.scrollTop || 0;
@@ -674,15 +689,17 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     openFind();
   } else if (e.key === 'z' || e.key === 'Z') {
-    // 优先走工具栏自定义历史栈；无历史时回退浏览器原生撤销
-    if (state.editing && (undoStack.length || redoStack.length)) {
+    // 源码模式：优先走工具栏自定义历史栈；无历史时回退浏览器原生撤销
+    // WYSIWYG 模式：交给浏览器原生撤销（execCommand 会进原生栈）
+    const tab = getActiveTab();
+    if (state.editing && tab && tab.editMode !== 'wysiwyg' && (undoStack.length || redoStack.length)) {
       e.preventDefault();
       if (e.shiftKey) tbRedo(); else tbUndo();
     }
-  } else if ((e.key === 'b' || e.key === 'B') && state.editing && document.activeElement === editorEl) {
+  } else if ((e.key === 'b' || e.key === 'B') && state.editing && (document.activeElement === editorEl || document.activeElement === wysiwygEl)) {
     e.preventDefault();
     execToolbarCmd('bold');
-  } else if ((e.key === 'i' || e.key === 'I') && state.editing && document.activeElement === editorEl) {
+  } else if ((e.key === 'i' || e.key === 'I') && state.editing && (document.activeElement === editorEl || document.activeElement === wysiwygEl)) {
     e.preventDefault();
     execToolbarCmd('italic');
   }
@@ -735,8 +752,23 @@ function enterEdit() {
   document.body.classList.add('editing');
   $('#content').classList.add('editing');
   editorPane.hidden = false;
+  if (tab) {
+    const content = tab.editorContent != null ? tab.editorContent : tab.raw;
+    editorEl.value = content;
+    wysiwygEl.innerHTML = markdownToEditorHtml(content);
+    if (tab.editMode === 'source') {
+      wysiwygEl.hidden = true;
+      editorEl.hidden = false;
+      editorEl.focus();
+    } else {
+      tab.editMode = 'wysiwyg';
+      wysiwygEl.hidden = false;
+      editorEl.hidden = true;
+      wysiwygEl.focus();
+    }
+  }
   updateEditButtons();
-  editorEl.focus();
+  updateModeToggleUI();
 }
 
 function exitEdit() {
@@ -746,7 +778,10 @@ function exitEdit() {
   document.body.classList.remove('editing');
   $('#content').classList.remove('editing');
   editorPane.hidden = true;
+  wysiwygEl.hidden = true;
+  editorEl.hidden = false;
   if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; }
+  if (wysiwygTimer) { clearTimeout(wysiwygTimer); wysiwygTimer = null; }
   updateEditButtons();
   renderTabBar();
 }
@@ -794,23 +829,24 @@ let suppressUntil = 0;
 
 async function saveDoc() {
   if (!state.active || !state.editing || !state.dirty) return;
-  const r = await api.writeFile(state.active, editorEl.value);
+  const tab = getActiveTab();
+  const content = tab && tab.editMode === 'wysiwyg' ? htmlToMarkdown(wysiwygEl.innerHTML) : editorEl.value;
+  const r = await api.writeFile(state.active, content);
   if (!r.ok) {
     alert(r.error || '保存失败');
     return;
   }
   suppressUntil = Date.now() + 500;
-  const tab = getActiveTab();
   if (tab) {
-    tab.raw = editorEl.value;
-    tab.editorContent = editorEl.value;
+    tab.raw = content;
+    tab.editorContent = content;
     tab.dirty = false;
   }
-  state.raw = editorEl.value;
+  state.raw = content;
   state.dirty = false;
   updateEditButtons();
   renderTabBar();
-  renderMarkdown(state.raw);
+  renderMarkdown(content);
 }
 
 function onEditorInput() {
@@ -821,6 +857,24 @@ function onEditorInput() {
   renderTabBar();
   if (previewTimer) clearTimeout(previewTimer);
   previewTimer = setTimeout(() => renderMarkdown(editorEl.value), 200);
+}
+
+let wysiwygTimer = null;
+
+function onWysiwygInput() {
+  state.dirty = true;
+  const tab = getActiveTab();
+  if (tab) tab.dirty = true;
+  updateEditButtons();
+  renderTabBar();
+  if (previewTimer) clearTimeout(previewTimer);
+  if (wysiwygTimer) clearTimeout(wysiwygTimer);
+  wysiwygTimer = setTimeout(() => {
+    wysiwygTimer = null;
+    const md = htmlToMarkdown(wysiwygEl.innerHTML);
+    if (tab) tab.editorContent = md;
+    renderMarkdown(md);
+  }, 300);
 }
 
 /* ---------- 编辑工具栏 ---------- */
@@ -856,6 +910,7 @@ function afterTbEdit() {
   editorEl.focus();
 }
 
+/* ---------- 源码模式辅助函数 ---------- */
 function wrapSelection(before, after, placeholder) {
   const ta = editorEl;
   const start = ta.selectionStart;
@@ -914,7 +969,7 @@ function insertAtCursor(text) {
 const TABLE_TEMPLATE = '\n| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n';
 const COMMENT_TEMPLATE = '<!-- 注释 -->';
 
-function execToolbarCmd(cmd, lang) {
+function execSourceCmd(cmd, lang) {
   if (!state.active || !state.editing) return;
   if (cmd === 'undo') { tbUndo(); return; }
   if (cmd === 'redo') { tbRedo(); return; }
@@ -947,6 +1002,86 @@ function execToolbarCmd(cmd, lang) {
   afterTbEdit();
 }
 
+/* ---------- 所见即所得模式命令 ---------- */
+function getSelText() {
+  const s = window.getSelection();
+  return s ? s.toString() : '';
+}
+
+function execWysiwygCmd(cmd, lang) {
+  if (!state.active || !state.editing) return;
+  wysiwygEl.focus();
+  switch (cmd) {
+    case 'undo': document.execCommand('undo'); break;
+    case 'redo': document.execCommand('redo'); break;
+    case 'bold': document.execCommand('bold'); break;
+    case 'italic': document.execCommand('italic'); break;
+    case 'strike': document.execCommand('strikeThrough'); break;
+    case 'h1': document.execCommand('formatBlock', false, 'h1'); break;
+    case 'h2': document.execCommand('formatBlock', false, 'h2'); break;
+    case 'h3': document.execCommand('formatBlock', false, 'h3'); break;
+    case 'h4': document.execCommand('formatBlock', false, 'h4'); break;
+    case 'h5': document.execCommand('formatBlock', false, 'h5'); break;
+    case 'h6': document.execCommand('formatBlock', false, 'h6'); break;
+    case 'ul':
+    case 'ul-star': document.execCommand('insertUnorderedList'); break;
+    case 'ol': document.execCommand('insertOrderedList'); break;
+    case 'indent': document.execCommand('indent'); break;
+    case 'outdent': document.execCommand('outdent'); break;
+    case 'quote': document.execCommand('formatBlock', false, 'blockquote'); break;
+    case 'hr': document.execCommand('insertHorizontalRule'); break;
+    case 'code': {
+      const t = getSelText() || '代码';
+      document.execCommand('insertHTML', false, '<code>' + esc(t) + '</code>');
+      break;
+    }
+    case 'codeblock': {
+      const t = getSelText() || '代码';
+      const lc = lang ? ' class="language-' + lang + '"' : '';
+      document.execCommand('insertHTML', false, '<pre><code' + lc + '>' + esc(t) + '</code></pre>');
+      break;
+    }
+    case 'link': {
+      const sel = getSelText() || '链接文字';
+      const url = window.prompt('链接地址：', 'https://');
+      if (url) document.execCommand('insertHTML', false, '<a href="' + esc(url) + '">' + esc(sel) + '</a>');
+      break;
+    }
+    case 'image': {
+      const url = window.prompt('图片地址（本地路径或 http 链接）：', '');
+      if (url) {
+        const src = /^(https?:|file:)/i.test(url) ? url : resolveAssetUrl(url);
+        document.execCommand('insertHTML', false, '<img src="' + esc(src) + '" alt="图片">');
+      }
+      break;
+    }
+    case 'table': {
+      document.execCommand('insertHTML', false,
+        '<table><thead><tr><th>列1</th><th>列2</th><th>列3</th></tr></thead>' +
+        '<tbody><tr><td>内容</td><td>内容</td><td>内容</td></tr></tbody></table>');
+      break;
+    }
+    case 'comment':
+    case 'task':
+      // 仅源码模式支持
+      return;
+    default:
+      return;
+  }
+  // execCommand 会触发 input 事件，onWysiwygInput 会处理
+  wysiwygEl.focus();
+}
+
+/* ---------- 双模式分派 ---------- */
+function execToolbarCmd(cmd, lang) {
+  const tab = getActiveTab();
+  if (tab && tab.editMode === 'wysiwyg') {
+    execWysiwygCmd(cmd, lang);
+  } else {
+    execSourceCmd(cmd, lang);
+  }
+}
+
 toolbarEl.addEventListener('click', (e) => {
   const item = e.target.closest('.tb-menu-item');
   if (item) {
@@ -961,6 +1096,108 @@ toolbarEl.addEventListener('click', (e) => {
   }
 });
 
+/* ---------- Turndown HTML→Markdown 转换 ---------- */
+let turndownSvc = null;
+
+function initTurndown() {
+  if (turndownSvc || !window.TurndownService) return;
+  turndownSvc = new window.TurndownService({
+    headingStyle: 'atx',
+    codeBlockStyle: 'fenced',
+    bulletListMarker: '-',
+    emDelimiter: '*',
+    strongDelimiter: '**'
+  });
+  if (window.turndownPluginGfm) {
+    turndownSvc.use(window.turndownPluginGfm.gfm);
+  }
+  // 图片路径还原：file:// 绝对路径 → 相对路径
+  turndownSvc.addRule('image', {
+    filter: 'img',
+    replacement: (content, node) => {
+      let src = node.getAttribute('src') || '';
+      const alt = node.getAttribute('alt') || '';
+      if (/^file:\/\//i.test(src)) {
+        try {
+          const abs = fileUrlToPath(src);
+          const rel = relPathFromDir(state.dir, abs);
+          if (rel) src = rel;
+        } catch { /* 保持原路径 */ }
+      }
+      return '![' + alt + '](' + src + ')';
+    }
+  });
+}
+
+function htmlToMarkdown(html) {
+  if (!turndownSvc) initTurndown();
+  if (!turndownSvc) return wysiwygEl.innerText || '';
+  return turndownSvc.turndown(html);
+}
+
+function markdownToEditorHtml(content) {
+  return marked.parse(content, { gfm: true, breaks: true, renderer: mdRenderer });
+}
+
+function relPathFromDir(fromDir, toPath) {
+  if (!fromDir) return null;
+  const f = String(fromDir).replace(/\\/g, '/').replace(/\/+$/, '').split('/');
+  const t = String(toPath).replace(/\\/g, '/').split('/');
+  if (!t.length) return null;
+  while (f.length && t.length && f[0] === t[0]) { f.shift(); t.shift(); }
+  const ups = f.map(() => '..');
+  const parts = ups.concat(t).filter(Boolean);
+  return parts.length ? parts.join('/') : null;
+}
+
+function currentEditorMd() {
+  const tab = getActiveTab();
+  if (!tab) return '';
+  return tab.editMode === 'wysiwyg' ? htmlToMarkdown(wysiwygEl.innerHTML) : editorEl.value;
+}
+
+/* ---------- 编辑器模式切换 ---------- */
+function switchEditorMode(mode) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  const target = mode || (tab.editMode === 'wysiwyg' ? 'source' : 'wysiwyg');
+  if (target === tab.editMode) return;
+  if (target === 'source') {
+    tab.editorContent = htmlToMarkdown(wysiwygEl.innerHTML);
+    editorEl.value = tab.editorContent;
+    wysiwygEl.hidden = true;
+    editorEl.hidden = false;
+  } else {
+    tab.editorContent = editorEl.value;
+    wysiwygEl.innerHTML = markdownToEditorHtml(tab.editorContent);
+    editorEl.hidden = true;
+    wysiwygEl.hidden = false;
+  }
+  tab.editMode = target;
+  updateModeToggleUI();
+  const targetEl = target === 'wysiwyg' ? wysiwygEl : editorEl;
+  targetEl.focus();
+  renderMarkdown(tab.editorContent);
+}
+
+function updateModeToggleUI() {
+  const tab = getActiveTab();
+  const wys = !tab || tab.editMode === 'wysiwyg';
+  tbModeToggle.textContent = wys ? '源码' : '渲染';
+  tbModeToggle.title = wys ? '切换到源码模式' : '切换到所见即所得模式';
+}
+
+tbModeToggle.addEventListener('click', () => switchEditorMode());
+
+wysiwygEl.addEventListener('input', onWysiwygInput);
+
+/* 粘贴时清理富文本格式（保留纯文本） */
+wysiwygEl.addEventListener('paste', (e) => {
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  document.execCommand('insertText', false, text);
+});
+
 /* ---------- 自动刷新 ---------- */
 let fileRefreshTimer = null;
 let treeRefreshTimer = null;
@@ -972,7 +1209,8 @@ api.onFileChanged(p => {
     if (Date.now() < suppressUntil) return;
     const tab = getActiveTab();
     if (tab && tab.editing && tab.dirty) {
-      renderMarkdown(editorEl.value);
+      const md = tab.editMode === 'wysiwyg' ? htmlToMarkdown(wysiwygEl.innerHTML) : editorEl.value;
+      renderMarkdown(md);
       return;
     }
     const st = docEl.scrollTop;
@@ -986,6 +1224,9 @@ api.onFileChanged(p => {
     }
     state.raw = r.content;
     editorEl.value = r.content;
+    if (tab && tab.editing && tab.editMode === 'wysiwyg') {
+      wysiwygEl.innerHTML = markdownToEditorHtml(r.content);
+    }
     state.dirty = false;
     updateEditButtons();
     renderTabBar();
