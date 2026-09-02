@@ -776,6 +776,7 @@ function exitEdit() {
   const tab = getActiveTab();
   if (tab) tab.editing = false;
   document.body.classList.remove('editing');
+  document.body.classList.remove('wysiwyg-mode');
   $('#content').classList.remove('editing');
   editorPane.hidden = true;
   wysiwygEl.hidden = true;
@@ -1183,6 +1184,8 @@ function switchEditorMode(mode) {
 function updateModeToggleUI() {
   const tab = getActiveTab();
   const wys = !tab || tab.editMode === 'wysiwyg';
+  // WYSIWYG 编辑时单栏显示（隐藏右侧预览）
+  document.body.classList.toggle('wysiwyg-mode', !!(tab && tab.editing && wys));
   tbModeToggle.textContent = wys ? '源码' : '渲染';
   tbModeToggle.title = wys ? '切换到源码模式' : '切换到所见即所得模式';
 }

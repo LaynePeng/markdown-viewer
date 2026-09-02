@@ -454,6 +454,17 @@ body[data-theme="dark"] #doc mark.mdv-find-current {
   overflow: hidden;
 }
 
+/* WYSIWYG 模式：单栏编辑，隐藏右侧预览与分割线，编辑区占满 */
+body.wysiwyg-mode #content.editing #editor-pane {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+body.wysiwyg-mode #content.editing #divider,
+body.wysiwyg-mode #content.editing #doc {
+  display: none;
+}
+
 #editor-pane {
   flex: 0 0 var(--editor-w, 45%);
   min-width: 120px;
