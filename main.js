@@ -102,6 +102,7 @@ ipcMain.handle('open-external', (_e, url) => {
   return { ok: true };
 });
 
+/* 版本号唯一来源：package.json（打包后读 app.asar 内版本） */
 ipcMain.handle('get-version', () => app.getVersion());
 
 function setupMenu() {

@@ -464,6 +464,109 @@ body[data-theme="dark"] #doc mark.mdv-find-current {
 
 #editor-pane[hidden] { display: none; }
 
+/* ---------- 编辑工具栏 ---------- */
+#editor-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--sidebar-border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  user-select: none;
+}
+.tb-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.tb-sep {
+  flex-shrink: 0;
+  width: 1px;
+  height: 18px;
+  background: var(--sidebar-border);
+  margin: 0 2px;
+}
+.tb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .1s ease, border-color .1s ease;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.tb-btn:hover { background: var(--hover); border-color: var(--btn-border); }
+.tb-btn:active { transform: translateY(1px); }
+.tb-btn b { font-weight: 700; }
+.tb-btn i { font-style: italic; }
+.tb-btn s { text-decoration: line-through; }
+.tb-btn .caret { font-size: 9px; margin-left: 1px; opacity: .7; }
+
+/* 下拉菜单 */
+.tb-drop { position: relative; display: inline-flex; }
+.tb-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 80;
+  display: none;
+  min-width: 170px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  animation: tb-menu-in .12s ease;
+}
+@keyframes tb-menu-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+.tb-drop:hover .tb-menu,
+.tb-drop:focus-within .tb-menu { display: block; }
+.tb-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.tb-menu-item:hover { background: var(--hover); }
+.tb-menu-item code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.tb-menu-sep {
+  display: block;
+  height: 1px;
+  background: var(--sidebar-border);
+  margin: 4px 2px;
+}
+
 #divider {
   display: none;
   flex: 0 0 5px;

@@ -23,6 +23,13 @@ node --check renderer/app.js  # JS 语法检查
 - 自签证书/企业代理环境：加 `--insecure` 参数跳过 TLS 校验
 - macOS 包为 ad-hoc 签名，未公证。首次打开如提示「无法验证开发者」，右键 → 打开 或 系统设置 → 隐私与安全性 → 仍然打开
 
+## 版本号管理
+
+- **唯一来源**：`package.json` 的 `version` 字段
+- 应用内「关于」弹窗的版本号通过 `app.getVersion()` 运行时读取（`main.js` → IPC `get-version` → `preload.js` → `renderer/app.js`），无需（也不应）在其他地方硬编码版本号
+- 升级版本只需：① 修改 `package.json` 的 `version`；② 运行 `npm install` 同步 `package-lock.json`
+- `RELEASE_NOTES.md` 与下载链接中的 `{{VERSION}}` 占位符由 workflow 自动替换，不要手动填写具体版本号
+
 ## 发布流程
 
 1. 更新 `package.json` 中的 `version` 字段

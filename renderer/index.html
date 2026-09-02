@@ -75,6 +75,77 @@
         </button>
       </div>
       <div id="editor-pane" hidden>
+        <div id="editor-toolbar">
+          <span class="tb-group">
+            <button class="tb-btn" data-cmd="undo" title="撤销 (⌘Z)">↩</button>
+            <button class="tb-btn" data-cmd="redo" title="重做 (⌘⇧Z)">↪</button>
+          </span>
+          <span class="tb-sep"></span>
+          <span class="tb-group">
+            <button class="tb-btn" data-cmd="bold" title="加粗 (⌘B)"><b>B</b></button>
+            <button class="tb-btn" data-cmd="italic" title="斜体 (⌘I)"><i>I</i></button>
+            <button class="tb-btn" data-cmd="strike" title="删除线"><s>S</s></button>
+          </span>
+          <span class="tb-sep"></span>
+          <span class="tb-group">
+            <button class="tb-btn" data-cmd="h2" title="二级标题">H2</button>
+            <button class="tb-btn" data-cmd="h3" title="三级标题">H3</button>
+            <button class="tb-btn" data-cmd="h4" title="四级标题">H4</button>
+            <span class="tb-drop">
+              <button class="tb-btn tb-drop-trigger" title="其他标题">H*<span class="caret">▾</span></button>
+              <span class="tb-menu">
+                <button class="tb-menu-item" data-cmd="h1">H1 一级标题</button>
+                <button class="tb-menu-item" data-cmd="h5">H5 五级标题</button>
+                <button class="tb-menu-item" data-cmd="h6">H6 六级标题</button>
+              </span>
+            </span>
+          </span>
+          <span class="tb-sep"></span>
+          <span class="tb-group">
+            <button class="tb-btn" data-cmd="link" title="链接">🔗</button>
+            <button class="tb-btn" data-cmd="image" title="图片">🖼</button>
+            <button class="tb-btn" data-cmd="table" title="插入表格">⊞</button>
+            <span class="tb-drop">
+              <button class="tb-btn tb-drop-trigger" title="更多插入">+<span class="caret">▾</span></button>
+              <span class="tb-menu">
+                <button class="tb-menu-item" data-cmd="hr">── 分割线</button>
+                <button class="tb-menu-item" data-cmd="quote">❝ 引用</button>
+                <button class="tb-menu-item" data-cmd="comment"><span style="color:var(--muted)">&lt;!-- 注释 --&gt;</span></button>
+              </span>
+            </span>
+          </span>
+          <span class="tb-sep"></span>
+          <span class="tb-group">
+            <button class="tb-btn" data-cmd="ul" title="无序列表 (- )">•</button>
+            <button class="tb-btn" data-cmd="ul-star" title="无序列表 (* )">⁃</button>
+            <span class="tb-drop">
+              <button class="tb-btn tb-drop-trigger" title="更多列表">⋯<span class="caret">▾</span></button>
+              <span class="tb-menu">
+                <button class="tb-menu-item" data-cmd="ol">1. 有序列表</button>
+                <button class="tb-menu-item" data-cmd="task">☐ 任务列表</button>
+                <span class="tb-menu-sep"></span>
+                <button class="tb-menu-item" data-cmd="indent">→ 缩进</button>
+                <button class="tb-menu-item" data-cmd="outdent">← 取消缩进</button>
+              </span>
+            </span>
+          </span>
+          <span class="tb-sep"></span>
+          <span class="tb-group">
+            <span class="tb-drop">
+              <button class="tb-btn tb-drop-trigger" data-cmd="code" title="代码 (行内/代码块)">&lt;/&gt;<span class="caret">▾</span></button>
+              <span class="tb-menu">
+                <button class="tb-menu-item" data-cmd="code">`code` 行内代码</button>
+                <span class="tb-menu-sep"></span>
+                <button class="tb-menu-item" data-cmd="codeblock" data-lang="js">```js JavaScript</button>
+                <button class="tb-menu-item" data-cmd="codeblock" data-lang="py">```py Python</button>
+                <button class="tb-menu-item" data-cmd="codeblock" data-lang="java">```java Java</button>
+                <button class="tb-menu-item" data-cmd="codeblock" data-lang="json">```json JSON</button>
+                <button class="tb-menu-item" data-cmd="codeblock" data-lang="md">```md Markdown</button>
+                <button class="tb-menu-item" data-cmd="codeblock" data-lang="txt">```txt 纯文本</button>
+              </span>
+            </span>
+          </span>
+        </div>
         <textarea id="editor" spellcheck="false" placeholder="在左侧编辑 Markdown，右侧实时预览"></textarea>
       </div>
       <div id="divider" title="拖动调整左右宽度"></div>

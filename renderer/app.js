@@ -635,7 +635,10 @@ const aboutModal = $('#about-modal');
 
 function closeAbout() { aboutModal.hidden = true; }
 
-api.onShowAbout(() => { aboutModal.hidden = false; });
+api.onShowAbout(async () => {
+  try { $('#about-version').textContent = await api.getVersion(); } catch { /* ignore */ }
+  aboutModal.hidden = false;
+});
 $('#btn-close-about').addEventListener('click', closeAbout);
 $('#btn-about-github').addEventListener('click', () => api.openExternal(GITHUB_URL));
 $('#about-github').addEventListener('click', (e) => { e.preventDefault(); api.openExternal(GITHUB_URL); });
@@ -670,6 +673,18 @@ document.addEventListener('keydown', (e) => {
   } else if (e.key === 'f' || e.key === 'F') {
     e.preventDefault();
     openFind();
+  } else if (e.key === 'z' || e.key === 'Z') {
+    // 优先走工具栏自定义历史栈；无历史时回退浏览器原生撤销
+    if (state.editing && (undoStack.length || redoStack.length)) {
+      e.preventDefault();
+      if (e.shiftKey) tbRedo(); else tbUndo();
+    }
+  } else if ((e.key === 'b' || e.key === 'B') && state.editing && document.activeElement === editorEl) {
+    e.preventDefault();
+    execToolbarCmd('bold');
+  } else if ((e.key === 'i' || e.key === 'I') && state.editing && document.activeElement === editorEl) {
+    e.preventDefault();
+    execToolbarCmd('italic');
   }
 });
 
@@ -807,6 +822,144 @@ function onEditorInput() {
   if (previewTimer) clearTimeout(previewTimer);
   previewTimer = setTimeout(() => renderMarkdown(editorEl.value), 200);
 }
+
+/* ---------- 编辑工具栏 ---------- */
+const toolbarEl = $('#editor-toolbar');
+const undoStack = [];
+const redoStack = [];
+const MAX_HISTORY = 50;
+
+function pushHistory() {
+  undoStack.push(editorEl.value);
+  if (undoStack.length > MAX_HISTORY) undoStack.shift();
+  redoStack.length = 0;
+}
+
+function tbUndo() {
+  if (undoStack.length === 0) return false;
+  redoStack.push(editorEl.value);
+  editorEl.value = undoStack.pop();
+  afterTbEdit();
+  return true;
+}
+
+function tbRedo() {
+  if (redoStack.length === 0) return false;
+  undoStack.push(editorEl.value);
+  editorEl.value = redoStack.pop();
+  afterTbEdit();
+  return true;
+}
+
+function afterTbEdit() {
+  editorEl.dispatchEvent(new Event('input', { bubbles: true }));
+  editorEl.focus();
+}
+
+function wrapSelection(before, after, placeholder) {
+  const ta = editorEl;
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const sel = ta.value.substring(start, end);
+  const text = sel || placeholder;
+  ta.setRangeText(before + text + after, start, end, 'end');
+  if (!sel) {
+    const p = start + before.length;
+    ta.setSelectionRange(p, p + placeholder.length);
+  }
+}
+
+function linePrefix(prefix) {
+  const ta = editorEl;
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const val = ta.value;
+  const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+  const lineEnd = val.indexOf('\n', end);
+  const endPos = lineEnd === -1 ? val.length : lineEnd;
+  const block = val.substring(lineStart, endPos);
+  const newBlock = block.split('\n').map(l => prefix + l).join('\n');
+  ta.setRangeText(newBlock, lineStart, endPos, 'end');
+  const p = start + prefix.length;
+  ta.setSelectionRange(p, p);
+}
+
+function lineIndent(delta) {
+  const ta = editorEl;
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const val = ta.value;
+  const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+  const lineEnd = val.indexOf('\n', end);
+  const endPos = lineEnd === -1 ? val.length : lineEnd;
+  const block = val.substring(lineStart, endPos);
+  const newBlock = block.split('\n').map(l => {
+    if (delta > 0) return '  ' + l;
+    if (l.startsWith('  ')) return l.slice(2);
+    if (l.startsWith('\t')) return l.slice(1);
+    return l;
+  }).join('\n');
+  ta.setRangeText(newBlock, lineStart, endPos, 'end');
+  const shift = delta > 0 ? delta : 0;
+  ta.setSelectionRange(start + shift, start + shift);
+}
+
+function insertAtCursor(text) {
+  const ta = editorEl;
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  ta.setRangeText(text, start, end, 'end');
+}
+
+const TABLE_TEMPLATE = '\n| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n';
+const COMMENT_TEMPLATE = '<!-- 注释 -->';
+
+function execToolbarCmd(cmd, lang) {
+  if (!state.active || !state.editing) return;
+  if (cmd === 'undo') { tbUndo(); return; }
+  if (cmd === 'redo') { tbRedo(); return; }
+  pushHistory();
+  switch (cmd) {
+    case 'bold': wrapSelection('**', '**', '粗体文本'); break;
+    case 'italic': wrapSelection('*', '*', '斜体文本'); break;
+    case 'strike': wrapSelection('~~', '~~', '删除线文本'); break;
+    case 'h1': linePrefix('# '); break;
+    case 'h2': linePrefix('## '); break;
+    case 'h3': linePrefix('### '); break;
+    case 'h4': linePrefix('#### '); break;
+    case 'h5': linePrefix('##### '); break;
+    case 'h6': linePrefix('###### '); break;
+    case 'link': wrapSelection('[', '](https://)', '链接文字'); break;
+    case 'image': wrapSelection('![', '](https://)', '图片描述'); break;
+    case 'table': insertAtCursor(TABLE_TEMPLATE); break;
+    case 'hr': insertAtCursor('\n---\n'); break;
+    case 'quote': linePrefix('> '); break;
+    case 'comment': insertAtCursor(COMMENT_TEMPLATE); break;
+    case 'ul': linePrefix('- '); break;
+    case 'ul-star': linePrefix('* '); break;
+    case 'ol': linePrefix('1. '); break;
+    case 'task': linePrefix('- [ ] '); break;
+    case 'indent': lineIndent(2); break;
+    case 'outdent': lineIndent(-2); break;
+    case 'code': wrapSelection('`', '`', '代码'); break;
+    case 'codeblock': wrapSelection('```' + (lang || '') + '\n', '\n```', '代码'); break;
+  }
+  afterTbEdit();
+}
+
+toolbarEl.addEventListener('click', (e) => {
+  const item = e.target.closest('.tb-menu-item');
+  if (item) {
+    e.preventDefault();
+    execToolbarCmd(item.dataset.cmd, item.dataset.lang);
+    return;
+  }
+  const btn = e.target.closest('.tb-btn');
+  if (btn && btn.dataset.cmd) {
+    e.preventDefault();
+    execToolbarCmd(btn.dataset.cmd);
+  }
+});
 
 /* ---------- 自动刷新 ---------- */
 let fileRefreshTimer = null;
