@@ -53,7 +53,7 @@ macOS 脚本支持指定架构：`./tools/build-macos.sh --arm64`（Apple Silico
    - `markdown-viewer-windows` — Windows 安装包 (.exe)
    - `markdown-viewer-macos-arm64` — macOS zip + dmg（Apple Silicon）
 
-打 `v*` 标签（如 `v1.2.0`）推送时会自动触发构建。
+打 `v*` 标签（如 `v1.2.1`）推送时会自动触发构建。
 
 ## 依赖同步
 

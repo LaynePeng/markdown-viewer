@@ -1,6 +1,6 @@
 {
   "name": "markdown-viewer",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Minimal, native, green (portable) Markdown viewer",
   "main": "main.js",
   "scripts": {
