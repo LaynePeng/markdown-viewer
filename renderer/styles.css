@@ -479,13 +479,12 @@ body.wysiwyg-mode #content.editing #doc {
 #editor-toolbar {
   flex-shrink: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 5px 8px;
   background: var(--sidebar-bg);
   border-bottom: 1px solid var(--sidebar-border);
-  overflow-x: auto;
-  scrollbar-width: thin;
   user-select: none;
 }
 .tb-group {
@@ -527,9 +526,10 @@ body.wysiwyg-mode #content.editing #doc {
 
 /* 下拉菜单 */
 .tb-drop { position: relative; display: inline-flex; }
+.tb-drop.align-right .tb-menu { left: auto; right: 0; }
 .tb-menu {
   position: absolute;
-  top: calc(100% + 4px);
+  top: 100%;
   left: 0;
   z-index: 80;
   display: none;
