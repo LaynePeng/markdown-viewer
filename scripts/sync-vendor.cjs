@@ -12,7 +12,9 @@ const files = [
   ['node_modules/marked/lib/marked.umd.js', 'marked.umd.js'],
   ['node_modules/mermaid/dist/mermaid.min.js', 'mermaid.min.js'],
   ['node_modules/turndown/dist/turndown.js', 'turndown.js'],
-  ['node_modules/turndown-plugin-gfm/dist/turndown-plugin-gfm.js', 'turndown-plugin-gfm.js']
+  ['node_modules/turndown-plugin-gfm/dist/turndown-plugin-gfm.js', 'turndown-plugin-gfm.js'],
+  ['node_modules/@plantuml/core/plantuml.js', 'plantuml.js'],
+  ['node_modules/@plantuml/core/viz-global.js', 'viz-global.js']
 ];
 
 for (const [src, dst] of files) {

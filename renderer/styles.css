@@ -845,6 +845,39 @@ body[data-theme="dark"] #doc.markdown-body pre {
   word-break: break-all;
 }
 
+/* ---------- PlantUML ---------- */
+.plantuml-wrap {
+  cursor: zoom-in;
+  text-align: center;
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.plantuml-wrap:hover {
+  border-color: var(--sidebar-border);
+  background: var(--hover);
+}
+
+.plantuml-wrap svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.plantuml-error {
+  color: var(--muted);
+  background: var(--code-bg);
+  border: 1px dashed var(--sidebar-border);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 /* ---------- 放大查看弹窗 ---------- */
 #diagram-modal {
   position: fixed;

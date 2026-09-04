@@ -37,7 +37,7 @@ const tabsEl = $('#tabs');
 const sortSelect = $('#sort-select');
 const sortDirBtn = $('#sort-dir');
 
-const state = { root: null, expanded: new Set(), active: null, mermaidItems: [], dir: '', sortBy: 'name', sortDir: 'asc' };
+const state = { root: null, expanded: new Set(), active: null, mermaidItems: [], plantumlItems: [], dir: '', sortBy: 'name', sortDir: 'asc' };
 const tabs = [];
 let activeTabId = null;
 let tabSeq = 0;
@@ -217,10 +217,12 @@ function renderMarkdown(content) {
     if (abs !== src) img.setAttribute('src', abs);
   });
   collectMermaid();
+  state.plantumlItems = window.mdvPlantUml ? window.mdvPlantUml.collectPlantUml(docEl) : [];
   docEl.querySelectorAll('pre code').forEach(b => {
     if (window.hljs && !b.classList.contains('hljs')) window.hljs.highlightElement(b);
   });
   renderMermaid();
+  if (window.mdvPlantUml) window.mdvPlantUml.renderPlantUml(state.plantumlItems);
   docEl.hidden = false;
   emptyEl.hidden = true;
   if (!findBar.hidden && findInput.value) doFind(false);
@@ -1657,6 +1659,7 @@ $('#btn-reset').addEventListener('click', () => {
   cssFileNameEl.hidden = true;
   if (state.root) renderTree(state.root);
   renderMermaid();
+  if (window.mdvPlantUml) window.mdvPlantUml.renderPlantUml(state.plantumlItems);
 });
 settingsPanel.addEventListener('change', (e) => {
   const el = e.target;
@@ -1665,6 +1668,7 @@ settingsPanel.addEventListener('change', (e) => {
   else if (el.id === 'set-width') cfg.width = Number(el.value);
   saveCfg(); applyCfg();
   renderMermaid();
+  if (window.mdvPlantUml) window.mdvPlantUml.renderPlantUml(state.plantumlItems);
 });
 cssFileInput.addEventListener('change', async () => {
   const f = cssFileInput.files[0];

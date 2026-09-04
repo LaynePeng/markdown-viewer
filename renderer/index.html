@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: file: https: http:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; img-src 'self' data: file: https: http:">
 <title>Markdown Viewer</title>
 <link rel="stylesheet" href="vendor/github-markdown.css">
 <link rel="stylesheet" href="vendor/highlight-github.css" data-code-theme="light">
@@ -296,6 +296,7 @@
 <script src="vendor/turndown-plugin-gfm.js"></script>
 <script src="hljs.js"></script>
 <script src="vendor/mermaid.min.js"></script>
+<script src="plantuml.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
