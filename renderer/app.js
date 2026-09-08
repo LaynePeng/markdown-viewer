@@ -233,13 +233,6 @@ function getActiveTab() {
   return tabs.find(t => t.id === activeTabId) || null;
 }
 
-function saveTabState(tab) {
-  if (!tab) return;
-  tab.scrollTop = docEl.scrollTop;
-  tab.editorScrollTop = editorEl.scrollTop;
-  tab.editorContent = tab.editMode === 'wysiwyg' ? htmlToMarkdown(wysiwygEl.innerHTML) : editorEl.value;
-}
-
 function renderTabBar() {
   tabsEl.innerHTML = '';
   for (const tab of tabs) {
@@ -295,7 +288,9 @@ function switchTab(tabId) {
   if (prev) {
     prev.scrollTop = docEl.scrollTop;
     prev.editorScrollTop = editorEl.scrollTop;
-    prev.editorContent = prev.editMode === 'wysiwyg' ? htmlToMarkdown(wysiwygEl.innerHTML) : editorEl.value;
+    if (prev.id !== tabId) {
+      prev.editorContent = prev.editMode === 'wysiwyg' ? htmlToMarkdown(wysiwygEl.innerHTML) : editorEl.value;
+    }
   }
   activeTabId = tabId;
   const tab = getActiveTab();
