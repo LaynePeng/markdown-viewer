@@ -208,6 +208,50 @@ mdRenderer.image = ({ href, title, text }) => {
   return '<img src="' + src + '" alt="' + alt + '"' + t + ' loading="lazy">';
 };
 
+/* ---------- 数学公式（KaTeX） ---------- */
+function renderMath(tex, displayMode) {
+  if (window.katex && window.katex.renderToString) {
+    try {
+      return window.katex.renderToString(tex, { displayMode, throwOnError: false, strict: false });
+    } catch (e) { /* 回退到原文 */ }
+  }
+  return '<span class="math-error">' + esc(tex) + '</span>';
+}
+
+const blockMathExt = {
+  name: 'blockMath',
+  level: 'block',
+  start(src) {
+    const m = src.match(/\$\$/);
+    return m ? m.index : undefined;
+  },
+  tokenizer(src) {
+    const m = /^\$\$[ \t]*\n?([\s\S]+?)\n?\$\$(?:\n|$)/.exec(src);
+    if (m) return { type: 'blockMath', raw: m[0], text: m[1].trim() };
+  },
+  renderer(token) {
+    return renderMath(token.text, true);
+  }
+};
+
+const inlineMathExt = {
+  name: 'inlineMath',
+  level: 'inline',
+  start(src) {
+    const m = src.match(/\$(?!\s)/);
+    return m ? m.index : undefined;
+  },
+  tokenizer(src) {
+    const m = /^\$(?!\s)((?:\\.|[^\\$])+?)(?<!\s)\$/.exec(src);
+    if (m) return { type: 'inlineMath', raw: m[0], text: m[1] };
+  },
+  renderer(token) {
+    return renderMath(token.text, false);
+  }
+};
+
+marked.use({ extensions: [blockMathExt, inlineMathExt] });
+
 function renderMarkdown(content) {
   docEl.innerHTML = marked.parse(content, { gfm: true, breaks: true, renderer: mdRenderer });
   docEl.querySelectorAll('img').forEach(img => {
@@ -1391,6 +1435,25 @@ function initTurndown() {
   if (window.turndownPluginGfm) {
     turndownSvc.use(window.turndownPluginGfm.gfm);
   }
+  // 数学公式还原：KaTeX 渲染结果 → LaTeX 原文
+  const katexTex = node => {
+    const ann = node.querySelector('annotation[encoding="application/x-tex"]');
+    return ann ? ann.textContent : null;
+  };
+  turndownSvc.addRule('blockMath', {
+    filter: node => node.classList && node.classList.contains('katex-display'),
+    replacement: (content, node) => {
+      const tex = katexTex(node);
+      return tex ? '\n\n$$\n' + tex + '\n$$\n\n' : content;
+    }
+  });
+  turndownSvc.addRule('inlineMath', {
+    filter: node => node.classList && node.classList.contains('katex'),
+    replacement: (content, node) => {
+      const tex = katexTex(node);
+      return tex ? '$' + tex + '$' : content;
+    }
+  });
   // 图片路径还原：file:// 绝对路径 → 相对路径
   turndownSvc.addRule('image', {
     filter: 'img',

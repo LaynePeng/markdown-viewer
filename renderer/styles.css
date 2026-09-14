@@ -700,6 +700,19 @@ body[data-theme="dark"] #doc.markdown-body pre {
   background: var(--code-bg);
 }
 
+#doc.markdown-body .katex-display,
+#wysiwyg.markdown-body .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+
+.math-error {
+  color: #d73a49;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
 #empty {
   margin: auto;
   text-align: center;
