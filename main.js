@@ -202,6 +202,73 @@ ipcMain.handle('write-file', async (_e, filePath, content) => {
   }
 });
 
+/* ---------- 文件管理（右键菜单：删除 / 重命名 / 打开所在文件夹） ---------- */
+
+function validLocalPath(p) {
+  return typeof p === 'string' && p.length > 0 && path.isAbsolute(p);
+}
+
+ipcMain.handle('reveal-item', (_e, targetPath) => {
+  if (!validLocalPath(targetPath)) return { ok: false, error: '无效路径' };
+  shell.showItemInFolder(targetPath);
+  return { ok: true };
+});
+
+ipcMain.handle('open-path', (_e, targetPath) => {
+  if (!validLocalPath(targetPath)) return { ok: false, error: '无效路径' };
+  const errMsg = shell.openPath(targetPath);
+  if (errMsg) return { ok: false, error: '打开失败：' + errMsg };
+  return { ok: true };
+});
+
+ipcMain.handle('rename-item', async (_e, oldPath, newName) => {
+  if (!validLocalPath(oldPath)) return { ok: false, error: '无效路径' };
+  const name = String(newName || '').trim();
+  if (!name) return { ok: false, error: '名称不能为空' };
+  if (/[\\/]/.test(name) || name === '.' || name === '..') return { ok: false, error: '名称不能包含 / \\ 或为 . ..' };
+  const stat = await fs.promises.stat(oldPath).catch(() => null);
+  if (!stat) return { ok: false, error: '原路径不存在（可能已被移动或删除）' };
+  const newPath = path.join(path.dirname(oldPath), name);
+  if (path.resolve(newPath) === path.resolve(oldPath)) return { ok: false, error: '名称没有变化' };
+  const exists = await fs.promises.stat(newPath).catch(() => null);
+  if (exists) return { ok: false, error: '已存在同名文件或文件夹' };
+  try {
+    await fs.promises.rename(oldPath, newPath);
+    return { ok: true, path: newPath };
+  } catch (err) {
+    return { ok: false, error: '重命名失败：' + (err && err.message ? err.message : String(err)) };
+  }
+});
+
+/* 删除 = 移到系统废纸篓（可恢复）。renderer 可传 extraWarning 提示未保存修改等 */
+ipcMain.handle('trash-item', async (_e, targetPath, extraWarning) => {
+  if (!validLocalPath(targetPath)) return { ok: false, error: '无效路径' };
+  const stat = await fs.promises.stat(targetPath).catch(() => null);
+  if (!stat) return { ok: false, error: '路径不存在（可能已被删除）' };
+  const name = path.basename(targetPath);
+  const detail = [
+    typeof extraWarning === 'string' && extraWarning ? extraWarning : '',
+    stat.isDirectory()
+      ? '该文件夹及其全部内容将被移到废纸篓，可从废纸篓恢复。'
+      : '该文件将被移到废纸篓，可从废纸篓恢复。'
+  ].filter(Boolean).join('\n');
+  const r = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['移到废纸篓', '取消'],
+    defaultId: 0,
+    cancelId: 1,
+    message: `删除「${name}」？`,
+    detail
+  });
+  if (r.response !== 0) return { ok: false, canceled: true };
+  try {
+    await shell.trashItem(targetPath);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: '删除失败：' + (err && err.message ? err.message : String(err)) };
+  }
+});
+
 /* ---------- 监听文件修改 / 目录变化 ---------- */
 function stopWatching() {
   if (dirWatchTimer) { clearTimeout(dirWatchTimer); dirWatchTimer = null; }

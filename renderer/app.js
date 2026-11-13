@@ -90,10 +90,13 @@ function renderTree(root) {
 async function loadLevel(dir, ul) {
   ul.dataset.loading = '1';
   const r = await api.readDir(dir);
-  if (!r.ok) return;
+  if (!r.ok) { delete ul.dataset.loading; return; }
+  ul.innerHTML = '';
   for (const it of sortItems(r.items)) {
     ul.appendChild(nodeOf(it));
   }
+  ul.dataset.loaded = '1';
+  delete ul.dataset.loading;
 }
 
 function nodeOf(it) {
@@ -119,7 +122,19 @@ function nodeOf(it) {
         span.innerHTML = ICONS.dir + '<span class="nm">' + esc(it.name) + '</span>';
       }
     });
-} else {
+    /* 双击文件夹：先确保展开，再在系统文件管理器中打开 */
+    li.addEventListener('dblclick', async (e) => {
+      e.stopPropagation();
+      if (!li.classList.contains('open')) {
+        li.classList.add('open');
+        state.expanded.add(it.path);
+        span.innerHTML = ICONS.dirOpen + '<span class="nm">' + esc(it.name) + '</span>';
+        if (sub.dataset.loaded !== '1') await loadLevel(it.path, sub);
+      }
+      const r = await api.openPath(it.path);
+      if (r && !r.ok) toast(r.error || '打开失败');
+    });
+  } else {
     const span = document.createElement('span');
     span.className = 'file';
     span.innerHTML = ICONS.file + '<span class="nm">' + esc(it.name) + '</span>';
@@ -139,7 +154,17 @@ function nodeOf(it) {
       }, 220);
     });
   }
-  if (state.expanded.has(it.path)) li.classList.add('open');
+  li.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showTreeContextMenu(e, it);
+  });
+  if (it.isDir && state.expanded.has(it.path)) {
+    li.classList.add('open');
+    const span = li.querySelector('span.dir');
+    if (span) span.innerHTML = ICONS.dirOpen + '<span class="nm">' + esc(it.name) + '</span>';
+    loadLevel(it.path, li.querySelector('ul'));
+  }
   return li;
 }
 
@@ -169,6 +194,224 @@ async function openLocal(p, newTab) {
       addTab(p, r.content);
     }
   }
+}
+
+/* ---------- 右键菜单：删除 / 重命名 / 打开所在文件夹 ---------- */
+let ctxMenuEl = null;
+
+function closeContextMenu() {
+  if (ctxMenuEl) { ctxMenuEl.remove(); ctxMenuEl = null; }
+}
+
+function openContextMenu(x, y, items) {
+  closeContextMenu();
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  for (const it of items) {
+    if (it === '-') {
+      const sep = document.createElement('div');
+      sep.className = 'ctx-sep';
+      menu.appendChild(sep);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'ctx-item' + (it.danger ? ' danger' : '');
+      btn.textContent = it.label;
+      btn.title = it.title || '';
+      btn.addEventListener('click', () => {
+        closeContextMenu();
+        it.action();
+      });
+      menu.appendChild(btn);
+    }
+  }
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  const px = Math.min(x, window.innerWidth - rect.width - 8);
+  const py = Math.min(y, window.innerHeight - rect.height - 8);
+  menu.style.left = Math.max(8, px) + 'px';
+  menu.style.top = Math.max(8, py) + 'px';
+  ctxMenuEl = menu;
+}
+
+document.addEventListener('mousedown', (e) => {
+  if (ctxMenuEl && !ctxMenuEl.contains(e.target)) closeContextMenu();
+}, true);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && ctxMenuEl) closeContextMenu();
+}, true);
+window.addEventListener('blur', closeContextMenu);
+
+function showTreeContextMenu(e, it) {
+  const items = [];
+  if (it.isDir) {
+    items.push({ label: '在系统中打开', title: '在 Finder / 资源管理器中打开此文件夹', action: async () => {
+      const r = await api.openPath(it.path);
+      if (r && !r.ok) toast(r.error || '打开失败');
+    } });
+  }
+  items.push({ label: '打开所在文件夹', title: '在系统文件管理器中定位并选中它', action: async () => {
+    const r = await api.revealItem(it.path);
+    if (r && !r.ok) toast(r.error || '定位失败');
+  } });
+  if (!it.isDir && isMarkdown(it.path)) {
+    items.push({ label: '在新标签页打开', action: () => openLocal(it.path, true) });
+  }
+  items.push('-');
+  items.push({ label: '重命名…', action: () => showRenameDialog(it) });
+  items.push({ label: '删除（移到废纸篓）', danger: true, action: () => trashTreeItem(it) });
+  openContextMenu(e.clientX, e.clientY, items);
+}
+
+async function trashTreeItem(it) {
+  const open = tabs.find(t => !t.error && (t.filePath === it.path || t.filePath.startsWith(it.path + pathSep(it.path))));
+  const extra = open && open.dirty ? '该文件正在编辑且有未保存的修改，删除后修改将丢失。' : '';
+  const r = await api.trashItem(it.path, extra);
+  if (!r || !r.ok) {
+    if (r && r.canceled) return;
+    toast((r && r.error) || '删除失败');
+    return;
+  }
+  /* 关闭被删路径下已打开的标签页 */
+  for (let i = tabs.length - 1; i >= 0; i--) {
+    const t = tabs[i];
+    if (t.filePath === it.path || t.filePath.startsWith(it.path + pathSep(it.path))) {
+      if (t.id === activeTabId) { closeTab(t.id); }
+      else { tabs.splice(i, 1); renderTabBar(); }
+    }
+  }
+  if (it.path === state.root || state.root.startsWith(it.path + pathSep(it.path))) {
+    /* 树根目录被删：清空文件树；若还有其他标签页则切过去，否则回到空状态 */
+    state.root = null;
+    state.expanded.clear();
+    treeEl.innerHTML = '';
+    dirNameEl.textContent = '文件树';
+    dirNameEl.title = '';
+    const remain = getActiveTab();
+    if (remain) switchTab(remain.id);
+    else showEmpty();
+  } else if (state.root) {
+    renderTree(state.root);
+  } else {
+    renderTabBar();
+  }
+}
+
+/* ---------- 重命名对话框 ---------- */
+function showRenameDialog(it) {
+  const oldName = basename(it.path);
+  const overlay = document.createElement('div');
+  overlay.className = 'rename-overlay';
+  const box = document.createElement('div');
+  box.className = 'rename-box';
+  const title = document.createElement('div');
+  title.className = 'rename-title';
+  title.textContent = (it.isDir ? '重命名文件夹：' : '重命名文件：') + oldName;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.spellcheck = false;
+  input.value = oldName;
+  const err = document.createElement('div');
+  err.className = 'rename-err';
+  err.hidden = true;
+  const actions = document.createElement('div');
+  actions.className = 'rename-actions';
+  const btnCancel = document.createElement('button');
+  btnCancel.className = 'btn';
+  btnCancel.textContent = '取消';
+  const btnOk = document.createElement('button');
+  btnOk.className = 'btn primary';
+  btnOk.textContent = '重命名';
+  actions.appendChild(btnCancel);
+  actions.appendChild(btnOk);
+  box.appendChild(title);
+  box.appendChild(input);
+  box.appendChild(err);
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  const submit = async () => {
+    const newName = input.value.trim();
+    if (!newName || newName === oldName) { close(); return; }
+    btnOk.disabled = true;
+    const r = await api.renameItem(it.path, newName);
+    btnOk.disabled = false;
+    if (!r || !r.ok) {
+      err.textContent = (r && r.error) || '重命名失败';
+      err.hidden = false;
+      input.focus();
+      input.select();
+      return;
+    }
+    close();
+    retargetAfterRename(it.path, r.path);
+  };
+  btnOk.addEventListener('click', submit);
+  btnCancel.addEventListener('click', close);
+  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); submit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+  });
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+  });
+  /* 默认选中不含扩展名的主名，方便直接输入新名 */
+  const dot = it.isDir ? -1 : oldName.lastIndexOf('.');
+  input.focus();
+  if (dot > 0) input.setSelectionRange(0, dot);
+  else input.select();
+}
+
+function pathSep(p) {
+  return p.includes('/') && !p.includes('\\') ? '/' : '\\';
+}
+
+function retargetPath(p, oldPath, newPath) {
+  if (!p) return p;
+  if (p === oldPath) return newPath;
+  const sep = pathSep(oldPath);
+  if (p.startsWith(oldPath + sep)) return newPath + p.slice(oldPath.length);
+  return p;
+}
+
+/* 重命名后把所有引用旧路径的地方（标签页 / 展开状态 / 根目录）改指向新路径 */
+function retargetAfterRename(oldPath, newPath) {
+  for (const t of tabs) t.filePath = retargetPath(t.filePath, oldPath, newPath);
+  state.active = retargetPath(state.active, oldPath, newPath);
+  state.dir = retargetPath(state.dir, oldPath, newPath);
+  state.root = retargetPath(state.root, oldPath, newPath);
+  state.expanded = new Set(Array.from(state.expanded).map(p => retargetPath(p, oldPath, newPath)));
+  const tab = getActiveTab();
+  if (tab && tab.filePath === state.active) {
+    const nm = basename(state.active);
+    titleEl.textContent = nm;
+    titleEl.title = state.active;
+    document.title = nm;
+    filePathEl.textContent = state.active;
+    filePathEl.title = state.active;
+    api.watchFile(state.active);
+  }
+  if (state.root) renderTree(state.root);
+  else renderTabBar();
+}
+
+/* ---------- 轻量提示（toast） ---------- */
+let toastTimer = null;
+
+function toast(msg) {
+  let el = $('#mdv-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'mdv-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
 
 /* ---------- 相对路径图片 ---------- */
@@ -549,6 +792,9 @@ findCloseBtn.addEventListener('click', closeFind);
 
 /* ---------- Mermaid ---------- */
 let mermaidSeq = 0;
+/* 渲染代次：新一轮渲染开始后，上一轮尚未完成的异步渲染结果全部作废，
+   防止快速切换文件 / 边编辑边预览时旧结果写入新内容 */
+let mermaidGen = 0;
 
 function mermaidTheme() {
   return cfg.theme === 'dark' ? 'dark' : 'default';
@@ -562,7 +808,8 @@ function collectMermaid() {
     wrap.className = 'mermaid-wrap';
     wrap.title = '点击放大';
     pre.replaceWith(wrap);
-    state.mermaidItems.push({ src: code.textContent, wrap });
+    /* marked 产出的 textContent 会带围栏内容的尾部换行，去掉以免行号多算一行 */
+    state.mermaidItems.push({ src: code.textContent.replace(/\r?\n$/, ''), wrap });
   });
 }
 
@@ -571,18 +818,169 @@ async function renderMermaid() {
   try {
     mermaid.initialize({ startOnLoad: false, theme: mermaidTheme(), securityLevel: 'strict' });
   } catch { return; }
+  const gen = ++mermaidGen;
   for (const it of state.mermaidItems) {
-    const id = 'mmd-' + (++mermaidSeq);
-    it.wrap.innerHTML = '';
-    it.wrap.onclick = () => openDiagram(it.wrap);
-    try {
-      const { svg } = await mermaid.render(id, it.src);
-      it.wrap.innerHTML = svg;
-    } catch (err) {
-      it.wrap.className = 'mermaid-error';
-      it.wrap.textContent = 'Mermaid 渲染失败：' + (err && err.message ? err.message : String(err));
-    }
+    if (gen !== mermaidGen) return; /* 已被新一轮渲染取代，放弃本轮 */
+    await renderMermaidItem(it, gen);
   }
+}
+
+async function renderMermaidItem(it, gen) {
+  const id = 'mmd-' + (++mermaidSeq);
+  /* 每次渲染前复位状态：上一轮失败留下的错误样式 / 点击行为都会被清掉 */
+  it.wrap.className = 'mermaid-wrap';
+  it.wrap.title = '点击放大';
+  it.wrap.innerHTML = '';
+  it.wrap.onclick = () => openDiagram(it.wrap);
+  try {
+    const { svg } = await mermaid.render(id, it.src);
+    if (gen !== mermaidGen) return; /* 过期结果，丢弃 */
+    it.wrap.innerHTML = svg;
+  } catch (err) {
+    /* mermaid 渲染失败会在 body 里遗留临时 div（#d + id），无论是否过期都要清掉防止累积 */
+    const orphan = document.getElementById('d' + id);
+    if (orphan) orphan.remove();
+    if (gen !== mermaidGen) return;
+    showMermaidError(it, err);
+  }
+}
+
+/* 单个图渲染失败只影响它自己：错误卡片 + 带行号的源码 + 一键定位到编辑器 */
+function showMermaidError(it, err) {
+  const msg = err && err.message ? err.message : String(err);
+  const lines = it.src.split('\n');
+  const lm = /line\s+(\d+)/i.exec(msg);
+  const errLine = lm ? Math.min(Math.max(parseInt(lm[1], 10), 1), lines.length) : null;
+
+  it.wrap.className = 'mermaid-wrap mermaid-error';
+  it.wrap.title = '';
+  it.wrap.onclick = null;
+  it.wrap.innerHTML = '';
+
+  const box = document.createElement('div');
+  box.className = 'mermaid-error-box';
+
+  const head = document.createElement('div');
+  head.className = 'mermaid-error-head';
+  const title = document.createElement('span');
+  title.className = 'mermaid-error-title';
+  title.textContent = 'Mermaid 渲染失败' + (lm ? '（第 ' + lm[1] + ' 行附近）' : '');
+  const btn = document.createElement('button');
+  btn.className = 'btn mermaid-locate-btn';
+  btn.textContent = '定位到源码';
+  btn.title = '在编辑器中选中并定位这段 Mermaid 代码';
+  btn.addEventListener('click', () => jumpToMermaidSource(it));
+  head.appendChild(title);
+  head.appendChild(btn);
+
+  const msgEl = document.createElement('pre');
+  msgEl.className = 'mermaid-error-msg';
+  msgEl.textContent = msg;
+
+  const code = document.createElement('div');
+  code.className = 'mermaid-error-code';
+  lines.forEach((ln, i) => {
+    const n = i + 1;
+    const row = document.createElement('div');
+    row.className = 'mermaid-error-line' + (errLine === n ? ' err' : '');
+    const lnEl = document.createElement('span');
+    lnEl.className = 'ln';
+    lnEl.textContent = n;
+    const lc = document.createElement('span');
+    lc.className = 'lc';
+    lc.textContent = ln.length ? ln : ' ';
+    row.appendChild(lnEl);
+    row.appendChild(lc);
+    code.appendChild(row);
+  });
+
+  box.appendChild(head);
+  box.appendChild(msgEl);
+  box.appendChild(code);
+  it.wrap.appendChild(box);
+}
+
+/* ---------- 在源码中扫描 mermaid 围栏代码块（处理嵌套围栏、CRLF、未闭合块） ---------- */
+function scanMermaidBlocks(md) {
+  const blocks = [];
+  if (!md) return blocks;
+  const text = String(md);
+  /* 行内保留 \r（与 code.textContent 一致），但围栏识别时忽略行尾 \r */
+  const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
+  const lineOffsets = [0];
+  for (let k = 0; k < text.length; k++) {
+    if (text[k] === '\n') lineOffsets.push(k + 1);
+  }
+  let i = 0;
+  while (i < lines.length) {
+    const m = /^[ \t]*(`{3,}|~{3,})[ \t]*(.*)$/.exec(lines[i]);
+    if (m) {
+      const fence = m[1];
+      const fChar = fence[0];
+      const fLen = fence.length;
+      let j = i + 1;
+      while (j < lines.length) {
+        const close = /^[ \t]*(`{3,}|~{3,})[ \t]*$/.exec(lines[j]);
+        if (close && close[1][0] === fChar && close[1].length >= fLen) break;
+        j++;
+      }
+      const lang = m[2].trim().toLowerCase().split(/\s+/)[0];
+      if (lang === 'mermaid') {
+        const content = lines.slice(i + 1, j).join('\n');
+        const contentEnd = j < lines.length ? lineOffsets[j] : text.length;
+        blocks.push({ start: lineOffsets[i], contentStart: lineOffsets[i + 1] || text.length, contentEnd, end: j < lines.length ? lineOffsets[j] + lines[j].length + 1 : text.length, content });
+      }
+      i = j + 1;
+      continue;
+    }
+    i++;
+  }
+  return blocks;
+}
+
+const cr = s => String(s || '').replace(/\r/g, '');
+const normMdSrc = s => cr(s).replace(/\n+$/, '');
+
+function findMermaidBlock(md, src) {
+  if (!md) return null;
+  const blocks = scanMermaidBlocks(md);
+  /* 精确匹配优先；WYSIWYG 往返转换可能增删尾部空行，再按归一化匹配 */
+  return blocks.find(b => b.content === src)
+    || blocks.find(b => normMdSrc(b.content) === normMdSrc(src))
+    || null;
+}
+
+/* 从错误卡片跳到编辑器里的对应 Mermaid 块 */
+function jumpToMermaidSource(it) {
+  const tab = getActiveTab();
+  if (!tab || !it.src) return;
+  if (tab.editing !== true) enterEdit();
+  if (tab.editMode !== 'source') switchEditorMode('source');
+  const blk = findMermaidBlock(editorEl.value, it.src);
+  if (!blk) { toast('没有在当前文档中找到这段 Mermaid 源码（可能已被修改）'); return; }
+  editorEl.focus();
+  editorEl.setSelectionRange(blk.start, blk.contentEnd);
+  scrollEditorToOffset(editorEl, blk.start);
+}
+
+/* 用镜像 div 估算光标偏移在 textarea 中的像素位置并滚动过去 */
+function scrollEditorToOffset(ta, offset) {
+  const mirror = document.createElement('div');
+  const style = window.getComputedStyle(ta);
+  const props = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'textTransform', 'wordSpacing', 'tabSize', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'boxSizing', 'width'];
+  for (const p of props) mirror.style[p] = style[p];
+  mirror.style.position = 'absolute';
+  mirror.style.left = '-9999px';
+  mirror.style.top = '0';
+  mirror.style.height = 'auto';
+  mirror.style.visibility = 'hidden';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.overflowWrap = 'break-word';
+  mirror.textContent = ta.value.slice(0, offset);
+  document.body.appendChild(mirror);
+  const target = mirror.offsetHeight - ta.clientHeight * 0.25;
+  mirror.remove();
+  ta.scrollTop = Math.max(0, Math.min(target, ta.scrollHeight - ta.clientHeight));
 }
 
 /* ---------- 放大查看 ---------- */

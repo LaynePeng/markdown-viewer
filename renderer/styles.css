@@ -846,16 +846,242 @@ body[data-theme="dark"] #doc.markdown-body pre {
   height: auto;
 }
 
-.mermaid-error {
-  color: var(--muted);
-  background: var(--code-bg);
-  border: 1px dashed var(--sidebar-border);
-  border-radius: 8px;
-  padding: 12px;
-  font-size: 13px;
+/* 渲染失败的 Mermaid 块：错误卡片（不影响其他图和其他文件） */
+.mermaid-wrap.mermaid-error {
+  cursor: default;
   text-align: left;
+  margin: 18px 0;
+}
+
+.mermaid-error-box {
+  border: 1px dashed #d1242f;
+  border-radius: 10px;
+  background: var(--code-bg);
+  overflow: hidden;
+}
+
+.mermaid-error-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.mermaid-error-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.mermaid-locate-btn {
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 10px;
+  flex-shrink: 0;
+}
+
+.mermaid-error-msg {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
   white-space: pre-wrap;
   word-break: break-all;
+  border-bottom: 1px solid var(--sidebar-border);
+  max-height: 130px;
+  overflow: auto;
+}
+
+.mermaid-error-code {
+  padding: 8px 0;
+  max-height: 260px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "PingFang SC", monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.mermaid-error-line {
+  display: flex;
+  gap: 10px;
+  padding: 0 12px 0 0;
+  white-space: pre;
+}
+
+.mermaid-error-line .ln {
+  flex-shrink: 0;
+  width: 34px;
+  text-align: right;
+  padding-right: 10px;
+  color: var(--muted);
+  user-select: none;
+  border-right: 1px solid var(--sidebar-border);
+}
+
+.mermaid-error-line .lc {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.mermaid-error-line.err {
+  background: var(--active);
+}
+
+.mermaid-error-line.err .ln {
+  color: #d1242f;
+  font-weight: 600;
+}
+
+.mermaid-error-line.err .lc::after {
+  content: '  ← 出错行';
+  color: #d1242f;
+  font-size: 11px;
+}
+
+/* ---------- 右键菜单 ---------- */
+.ctx-menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 180px;
+  background: var(--bg);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .22);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  animation: pop .12s ease;
+}
+
+.ctx-item {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--fg);
+  text-align: left;
+}
+
+.ctx-item:hover {
+  background: var(--hover);
+}
+
+.ctx-item.danger {
+  color: #d1242f;
+}
+
+.ctx-item.danger:hover {
+  background: #ffebe9;
+}
+
+body[data-theme="dark"] .ctx-item.danger:hover {
+  background: #3d1d20;
+}
+
+.ctx-sep {
+  height: 1px;
+  background: var(--sidebar-border);
+  margin: 4px 6px;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.primary:hover {
+  filter: brightness(1.08);
+}
+
+/* ---------- 重命名对话框 ---------- */
+.rename-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, .55);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rename-box {
+  background: var(--bg);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .45);
+  padding: 16px;
+  width: min(420px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: pop .14s ease;
+}
+
+.rename-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  word-break: break-all;
+}
+
+.rename-box input {
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--fg);
+  outline: none;
+}
+
+.rename-box input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, .18);
+}
+
+.rename-err {
+  font-size: 12.5px;
+  color: #d1242f;
+  word-break: break-all;
+}
+
+.rename-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ---------- toast 提示 ---------- */
+#mdv-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%) translateY(16px);
+  z-index: 400;
+  background: var(--fg);
+  color: var(--bg);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+  max-width: 70vw;
+  word-break: break-all;
+}
+
+#mdv-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 /* ---------- PlantUML ---------- */
