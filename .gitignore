@@ -5,3 +5,4 @@ dist/
 .codeartsdoer/
 .merkle-snapshot.json
 *.log
+.build-cache/
