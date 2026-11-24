@@ -36,6 +36,9 @@
       const wrap = document.createElement('div');
       wrap.className = 'plantuml-wrap';
       wrap.title = '点击放大';
+      /* pre 被替换后其 data-line 锚点随之丢失，转移到 wrap 上以维持滚动联动 */
+      const dl = pre.getAttribute('data-line');
+      if (dl) wrap.setAttribute('data-line', dl);
       pre.replaceWith(wrap);
       items.push({ src: code.textContent, wrap });
     });

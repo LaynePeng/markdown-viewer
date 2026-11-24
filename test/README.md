@@ -4,8 +4,12 @@
 
 ```bash
 # 渲染进程集成测试（桩 preload）：Mermaid 错误隔离/定位、围栏扫描、
-# 右键菜单、双击文件夹、重命名重定向、删除逻辑 —— 46 项断言
+# 右键菜单、双击文件夹、重命名重定向、删除逻辑 —— 48 项断言
 npx electron test/integration.js
+
+# 滚动联动集成测试（桩 preload）：data-line 行号注入、mermaid 容器行号转移、
+# 重渲染保持滚动、源码↔预览双向联动精度（≤10 行）、无回环抖动、编辑后锚点重建 —— 21 项断言
+npx electron test/scroll-sync.js
 
 # 主进程 IPC 真实验证（加载真实 main.js，操作 /tmp 临时文件）：
 # rename 各分支、目录迁移、真实目录树渲染 —— 12 项断言

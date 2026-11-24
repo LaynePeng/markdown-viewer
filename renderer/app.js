@@ -8,6 +8,7 @@ const dirNameEl = $('#dir-name');
 const filePathEl = $('#file-path');
 const titleEl = $('#file-title');
 const docEl = $('#doc');
+const docContainerEl = $('#doc-container');
 const emptyEl = $('#empty');
 const dropOverlay = $('#drop-overlay');
 const settingsPanel = $('#settings-panel');
@@ -473,7 +474,7 @@ const blockMathExt = {
     if (m) return { type: 'blockMath', raw: m[0], text: m[1].trim() };
   },
   renderer(token) {
-    return renderMath(token.text, true);
+    return tagWithLine(renderMath(token.text, true), token && token.srcLine);
   }
 };
 
@@ -495,7 +496,65 @@ const inlineMathExt = {
 
 marked.use({ extensions: [blockMathExt, inlineMathExt] });
 
+/* ---------- 源码行号锚点：渲染时在块级元素上标注 data-line，供分屏滚动联动定位 ---------- */
+let lineSrcText = '';
+let lineSrcCursor = 0;
+let lineSrcOffsets = [0];
+
+function srcLineOfPos(pos) {
+  let lo = 0, hi = lineSrcOffsets.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (lineSrcOffsets[mid] <= pos) lo = mid; else hi = mid - 1;
+  }
+  return lo + 1; /* 1-based 行号 */
+}
+
+/* 每次解析前重置全文与行偏移表；walkTokens 给每个 token 记录起始行号（srcLine） */
+marked.use({
+  hooks: {
+    preprocess(src) {
+      lineSrcText = src;
+      lineSrcCursor = 0;
+      lineSrcOffsets = [0];
+      for (let i = 0; i < src.length; i++) if (src.charCodeAt(i) === 10) lineSrcOffsets.push(i + 1);
+      return src;
+    }
+  },
+  walkTokens(token) {
+    if (typeof token.raw !== 'string' || !token.raw) return;
+    let idx = lineSrcText.indexOf(token.raw, lineSrcCursor);
+    if (idx < 0) idx = lineSrcText.indexOf(token.raw);
+    if (idx < 0) {
+      /* 引用/列表等嵌套 token 的 raw 会剥掉前缀而与原文对不上：退回当前游标（父块起点）近似 */
+      token.srcLine = srcLineOfPos(lineSrcCursor);
+      return;
+    }
+    lineSrcCursor = idx;
+    token.srcLine = srcLineOfPos(idx);
+  }
+});
+
+/* 在块级渲染输出的首个标签上注入 data-line 属性 */
+function tagWithLine(html, line) {
+  if (line == null || html == null) return html;
+  const m = /^<([a-zA-Z][a-zA-Z0-9]*)([^>]*?)(\/?)>/.exec(html);
+  if (!m || /\sdata-line=/.test(m[2])) return html;
+  return '<' + m[1] + m[2] + ' data-line="' + line + '"' + m[3] + '>' + html.slice(m[0].length);
+}
+
+/* 包装块级 renderer，让输出携带源码行号 */
+for (const rn of ['paragraph', 'heading', 'code', 'blockquote', 'list', 'table', 'hr', 'html']) {
+  const orig = mdRenderer[rn].bind(mdRenderer);
+  mdRenderer[rn] = function () {
+    return tagWithLine(orig.apply(null, arguments), arguments[0] && arguments[0].srcLine);
+  };
+}
+
 function renderMarkdown(content) {
+  /* 滚动容器随模式切换：编辑态是 #doc（overflow:auto），阅读态是 #doc-container */
+  const sc = state.editing ? docEl : docContainerEl;
+  const keepScroll = sc.scrollTop; /* innerHTML 重建会把滚动位置清零，先记下来 */
   docEl.innerHTML = marked.parse(content, { gfm: true, breaks: true, renderer: mdRenderer });
   docEl.querySelectorAll('img').forEach(img => {
     const src = img.getAttribute('src');
@@ -512,7 +571,9 @@ function renderMarkdown(content) {
   if (window.mdvPlantUml) window.mdvPlantUml.renderPlantUml(state.plantumlItems);
   docEl.hidden = false;
   emptyEl.hidden = true;
+  sc.scrollTop = keepScroll;
   if (!findBar.hidden && findInput.value) doFind(false);
+  scheduleRebuildSync(true); /* 重建滚动联动锚点；源码模式下让预览对齐编辑器位置 */
 }
 
 /* ---------- Tab 管理 ---------- */
@@ -807,6 +868,9 @@ function collectMermaid() {
     const wrap = document.createElement('div');
     wrap.className = 'mermaid-wrap';
     wrap.title = '点击放大';
+    /* pre 被替换后其 data-line 锚点随之丢失，转移到 wrap 上以维持滚动联动 */
+    const dl = pre.getAttribute('data-line');
+    if (dl) wrap.setAttribute('data-line', dl);
     pre.replaceWith(wrap);
     /* marked 产出的 textContent 会带围栏内容的尾部换行，去掉以免行号多算一行 */
     state.mermaidItems.push({ src: code.textContent.replace(/\r?\n$/, ''), wrap });
@@ -1216,6 +1280,7 @@ function enterEdit() {
   }
   updateEditButtons();
   updateModeToggleUI();
+  scheduleRebuildSync(false); /* 滚动容器从 #doc-container 切到 #doc，重建联动锚点坐标 */
 }
 
 function exitEdit() {
@@ -1272,6 +1337,231 @@ dividerEl.addEventListener('pointermove', (e) => {
   dividerEl.classList.remove('dragging');
   document.body.classList.remove('resizing');
 }));
+
+/* ---------- 源码 ↔ 预览 滚动联动 ---------- */
+let syncLineTops = null;       /* 每行顶部像素（镜像 div 实测，软换行也对得准），下标 i = 第 i+1 行 */
+let syncLineLen = -1;          /* 构建时的文本长度，用于惰性失效检测 */
+let syncLineW = -1;            /* 构建时的编辑器内容宽度 */
+let syncEditorPadTop = 0;
+let syncPreviewPadTop = 0;
+let syncAnchors = [];          /* 预览锚点 {line, top}，按文档顺序（top 与 line 均单调不减） */
+let syncRebuildScheduled = false;
+let syncResyncQueued = false;
+let syncRaf = 0;
+let syncPendingSide = '';
+let syncEcho = { editor: 0, doc: 0 }; /* 每侧最近一次被程序滚动的时间，用于识别回声 */
+let syncMutationTimer = 0;
+
+const MIRROR_STYLE_PROPS = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'textTransform', 'wordSpacing', 'tabSize', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'boxSizing', 'width'];
+
+function canSyncScroll() {
+  const tab = getActiveTab();
+  return !!(tab && tab.editing && tab.editMode === 'source' && !editorEl.hidden && !docEl.hidden && editorEl.clientWidth > 0 && docEl.clientHeight > 0);
+}
+
+/* 用与 textarea 同款样式的镜像 div + Range 逐行测量：源码行 → 内容像素 */
+function buildSyncLineTops() {
+  if (syncLineLen === editorEl.value.length && syncLineW === editorEl.clientWidth && syncLineTops) return;
+  const text = editorEl.value;
+  syncLineLen = text.length;
+  syncLineW = editorEl.clientWidth;
+  const cs = window.getComputedStyle(editorEl);
+  syncEditorPadTop = parseFloat(cs.paddingTop) || 0;
+  let lineH = parseFloat(cs.lineHeight);
+  if (!lineH || lineH < 3) lineH = (parseFloat(cs.fontSize) || 14) * 1.65;
+  const offsets = [0];
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) offsets.push(i + 1);
+  const mirror = document.createElement('div');
+  for (const p of MIRROR_STYLE_PROPS) mirror.style[p] = cs[p];
+  mirror.style.position = 'absolute';
+  mirror.style.left = '-9999px';
+  mirror.style.top = '0';
+  mirror.style.height = 'auto';
+  mirror.style.visibility = 'hidden';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.overflowWrap = 'break-word';
+  mirror.textContent = text;
+  document.body.appendChild(mirror);
+  const base = mirror.getBoundingClientRect().top;
+  const tops = new Float64Array(offsets.length);
+  const node = mirror.firstChild;
+  let prev = 0;
+  if (node && node.nodeType === 3) {
+    const range = document.createRange();
+    for (let i = 0; i < offsets.length; i++) {
+      const end = i + 1 < offsets.length ? offsets[i + 1] : text.length;
+      try {
+        range.setStart(node, offsets[i]);
+        range.setEnd(node, end);
+        const rects = range.getClientRects();
+        tops[i] = rects.length ? rects[0].top - base : (i === 0 ? 0 : prev + lineH);
+      } catch { tops[i] = i === 0 ? 0 : prev + lineH; }
+      prev = tops[i];
+    }
+  }
+  mirror.remove();
+  syncLineTops = tops;
+}
+
+/* 收集预览里的 data-line 锚点：line 与像素 top 都换算到滚动坐标系 */
+function buildSyncAnchors() {
+  syncAnchors = [];
+  syncPreviewPadTop = parseFloat(window.getComputedStyle(docEl).paddingTop) || 0;
+  const els = docEl.querySelectorAll('[data-line]');
+  if (!els.length) return;
+  const base = docEl.getBoundingClientRect().top - docEl.scrollTop;
+  for (const el of els) {
+    const line = parseInt(el.getAttribute('data-line'), 10);
+    if (!Number.isFinite(line) || line < 1) continue;
+    syncAnchors.push({ line, top: el.getBoundingClientRect().top - base });
+  }
+}
+
+/* 编辑器内容像素 → 连续行号（如 12.4） */
+function editorPixelToLine(px) {
+  const t = syncLineTops;
+  if (!t || !t.length) return 1;
+  let lo = 0, hi = t.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (t[mid] <= px) lo = mid; else hi = mid - 1;
+  }
+  const cur = t[lo];
+  const next = lo + 1 < t.length ? t[lo + 1] : cur + 20;
+  const frac = next > cur ? Math.max(0, Math.min(1, (px - cur) / (next - cur))) : 0;
+  return lo + 1 + frac;
+}
+
+/* 连续行号 → 编辑器内容像素 */
+function lineToEditorPixel(line) {
+  const t = syncLineTops;
+  if (!t || !t.length) return 0;
+  const i = Math.max(0, Math.min(t.length - 1, Math.floor(line) - 1));
+  const cur = t[i];
+  const next = i + 1 < t.length ? t[i + 1] : cur + 20;
+  const frac = Math.max(0, Math.min(1, line - Math.floor(line)));
+  return cur + (next > cur ? (next - cur) * frac : 0);
+}
+
+/* 连续行号 → 预览滚动像素（锚点间插值；无锚点返回 null 走百分比兜底） */
+function lineToPreviewPixel(line) {
+  const a = syncAnchors;
+  if (!a.length) return null;
+  let lo = 0, hi = a.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (a[mid].line <= line) lo = mid; else hi = mid - 1;
+  }
+  const cur = a[lo];
+  if (lo === 0 && line < cur.line) {
+    /* 行号在首个锚点之前：按比例折算到文档顶部 */
+    return cur.line > 1 ? cur.top * (line - 1) / (cur.line - 1) : cur.top;
+  }
+  const nxt = a[lo + 1];
+  if (!nxt) return cur.top;
+  const span = nxt.line - cur.line;
+  const frac = span > 0 ? Math.max(0, Math.min(1, (line - cur.line) / span)) : 0;
+  return cur.top + (nxt.top - cur.top) * frac;
+}
+
+/* 预览滚动像素 → 连续行号（无锚点返回 null） */
+function previewPixelToLine(px) {
+  const a = syncAnchors;
+  if (!a.length) return null;
+  let lo = 0, hi = a.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (a[mid].top <= px) lo = mid; else hi = mid - 1;
+  }
+  const cur = a[lo];
+  const nxt = a[lo + 1];
+  if (!nxt) return cur.line;
+  const span = nxt.top - cur.top;
+  const frac = span > 0 ? Math.max(0, Math.min(1, (px - cur.top) / span)) : 0;
+  return cur.line + (nxt.line - cur.line) * frac;
+}
+
+/* 程序设置滚动位置，并给该侧打上回声标记（避免同步回环） */
+function programSetScroll(el, top, side) {
+  const max = el.scrollHeight - el.clientHeight;
+  const v = Math.max(0, Math.min(top, max));
+  if (Math.abs(el.scrollTop - v) < 1) return;
+  syncEcho[side] = Date.now();
+  el.scrollTop = v;
+}
+
+function percentFallback(target, source, side) {
+  const sMax = source.scrollHeight - source.clientHeight;
+  if (sMax <= 0) return;
+  const tMax = target.scrollHeight - target.clientHeight;
+  programSetScroll(target, tMax * source.scrollTop / sMax, side);
+}
+
+function syncFrom(side) {
+  if (!canSyncScroll()) return;
+  if (syncLineLen !== editorEl.value.length || syncLineW !== editorEl.clientWidth) buildSyncLineTops();
+  if (side === 'editor') {
+    const line = editorPixelToLine(editorEl.scrollTop + syncEditorPadTop);
+    const target = lineToPreviewPixel(line);
+    if (target != null) programSetScroll(docEl, target - syncPreviewPadTop, 'doc');
+    else percentFallback(docEl, editorEl, 'doc');
+  } else {
+    const line = previewPixelToLine(docEl.scrollTop + syncPreviewPadTop);
+    if (line != null) programSetScroll(editorEl, lineToEditorPixel(line) - syncEditorPadTop, 'editor');
+    else percentFallback(editorEl, docEl, 'editor');
+  }
+}
+
+/* rAF 合并高频滚动事件 */
+function scheduleSync(side) {
+  syncPendingSide = side;
+  if (syncRaf) return;
+  syncRaf = requestAnimationFrame(() => {
+    syncRaf = 0;
+    const s = syncPendingSide;
+    syncPendingSide = '';
+    if (s) syncFrom(s);
+  });
+}
+
+/* 重建映射表；resync=true 时源码模式下让预览对齐编辑器当前阅读位置 */
+function scheduleRebuildSync(resync) {
+  if (resync) syncResyncQueued = true;
+  if (syncRebuildScheduled) return;
+  syncRebuildScheduled = true;
+  requestAnimationFrame(() => {
+    syncRebuildScheduled = false;
+    const doResync = syncResyncQueued;
+    syncResyncQueued = false;
+    buildSyncAnchors();
+    if (!editorEl.hidden && editorEl.clientWidth > 0) buildSyncLineTops();
+    else { syncLineTops = null; syncLineLen = -1; syncLineW = -1; }
+    if (doResync && canSyncScroll()) syncFrom('editor');
+  });
+}
+
+editorEl.addEventListener('scroll', () => {
+  if (Date.now() - syncEcho.editor < 150) return; /* 本侧刚被程序滚动过：回声，忽略 */
+  scheduleSync('editor');
+});
+docEl.addEventListener('scroll', () => {
+  if (Date.now() - syncEcho.doc < 150) return;
+  scheduleSync('doc');
+});
+
+/* 图片/图表异步渲染后高度变化 → 重建锚点（不打断当前阅读位置） */
+docEl.addEventListener('load', () => scheduleRebuildSync(false), true);
+window.addEventListener('resize', () => scheduleRebuildSync(true));
+settingsPanel.addEventListener('change', () => scheduleRebuildSync(true));
+['pointerup', 'pointercancel'].forEach(ev => dividerEl.addEventListener(ev, () => scheduleRebuildSync(true)));
+const syncObserver = new MutationObserver(() => {
+  if (syncMutationTimer) return;
+  syncMutationTimer = setTimeout(() => {
+    syncMutationTimer = 0;
+    scheduleRebuildSync(false);
+  }, 150);
+});
+syncObserver.observe(docEl, { childList: true, subtree: true });
 
 let suppressUntil = 0;
 
